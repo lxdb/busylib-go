@@ -1,0 +1,16 @@
+# proto_path	go_package_suffix
+state.proto	proto/statepb
+state/device_name.proto	proto/statepb
+state/brightness.proto	proto/statepb
+state/power.proto	proto/statepb
+state/audio.proto	proto/statepb
+state/wifi.proto	proto/statepb
+state/timezone.proto	proto/statepb
+state/matter.proto	proto/statepb
+state/ble.proto	proto/blepb
+state/update.proto	proto/updatepb
+frame.proto	proto/framepb
+timer.proto	proto/timerpb
+input.proto	proto/inputpb
+error.proto	proto/errorpb
+util/json.proto	proto/utilpb

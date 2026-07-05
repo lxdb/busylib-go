@@ -1,0 +1,2 @@
+BSB_State.Timezone.name   max_length:31
+BSB_State.Timezone.abbr   max_length:7

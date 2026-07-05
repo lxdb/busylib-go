@@ -1,0 +1,6 @@
+BSB_State.WifiStateActive.ssid     max_length:32
+BSB_State.WifiStateActive.bssid    max_length:17
+BSB_State.IpAddress.address        max_length:39
+BSB_State.IpAddress.gateway        max_length:39
+BSB_State.IpAddress.netmask        max_length:39
+BSB_State.Wifi.ip_addresses        max_count:4

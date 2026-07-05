@@ -1,0 +1,2 @@
+BSB_State.BrightnessManual.brightness  int_size:IS_8
+BSB_State.Brightness.actual_brightness  int_size:IS_8
