@@ -531,16 +531,14 @@ func TestProgressBodyReportsKnownAndUnknownTotals(t *testing.T) {
 		}
 		client.setCachedAPISemVerForTest("24.4.0")
 
-		_, err = client.Do(context.Background(), Request{
-			Method: http.MethodPost,
-			Path:   "/api/storage/write",
+		err = client.Storage().Write(context.Background(), WriteStorageFileRequest{
+			Path: "/ext/payload.bin",
 			Body: ProgressBody(BytesBody([]byte("payload"), "application/octet-stream"), func(written, total int64) {
 				progress = append(progress, struct {
 					written int64
 					total   int64
 				}{written: written, total: total})
 			}),
-			ResponseMode: ResponseModeJSON,
 		})
 		if err != nil {
 			t.Fatalf("Do: %v", err)
@@ -576,19 +574,63 @@ func TestProgressBodyReportsKnownAndUnknownTotals(t *testing.T) {
 		}
 		client.setCachedAPISemVerForTest("24.4.0")
 
-		_, err = client.Do(context.Background(), Request{
-			Method: http.MethodPost,
-			Path:   "/api/storage/write",
+		err = client.Storage().Write(context.Background(), WriteStorageFileRequest{
+			Path: "/ext/payload.bin",
 			Body: ProgressBody(ReaderBody(strings.NewReader("stream"), "application/octet-stream"), func(_, total int64) {
 				lastTotal = total
 			}),
-			ResponseMode: ResponseModeJSON,
 		})
 		if err != nil {
 			t.Fatalf("Do: %v", err)
 		}
 		if lastTotal != -1 {
 			t.Fatalf("last total = %d, want -1", lastTotal)
+		}
+	})
+
+	t.Run("retry resets current attempt", func(t *testing.T) {
+		var progress []int64
+		attempts := 0
+		client, err := NewClient(
+			WithBaseURL("http://busybar.local"),
+			WithRetryPolicy(RetryPolicy{MaxAttempts: 2}),
+			WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				attempts++
+				buffer := make([]byte, 3)
+				for {
+					_, readErr := r.Body.Read(buffer)
+					if readErr == io.EOF {
+						break
+					}
+					if readErr != nil {
+						return nil, readErr
+					}
+				}
+				_ = r.Body.Close()
+				if attempts == 1 {
+					return nil, io.ErrUnexpectedEOF
+				}
+				return jsonResponse(http.StatusOK, map[string]string{"result": "OK"}), nil
+			})}),
+		)
+		if err != nil {
+			t.Fatalf("NewClient: %v", err)
+		}
+		client.setCachedAPISemVerForTest("24.4.0")
+
+		err = client.Assets().Upload(context.Background(), UploadAssetRequest{
+			ApplicationName: "app",
+			File:            "payload.bin",
+			Body: ProgressBody(BytesBody([]byte("payload"), "application/octet-stream"), func(written, _ int64) {
+				progress = append(progress, written)
+			}),
+		})
+		if err != nil {
+			t.Fatalf("Upload: %v", err)
+		}
+		want := []int64{3, 6, 7, 3, 6, 7}
+		if !reflect.DeepEqual(progress, want) {
+			t.Fatalf("progress = %#v, want %#v", progress, want)
 		}
 	})
 }

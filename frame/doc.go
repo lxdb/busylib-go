@@ -1,2 +1,2 @@
-// Package frame will own BUSY Bar screen frame decoding helpers.
+// Package frame decodes BUSY Bar HTTP and status-stream screen frames.
 package frame

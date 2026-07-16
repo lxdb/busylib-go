@@ -1,2 +1,2 @@
-// Package stream will own BUSY Bar status stream lifecycle and event mapping.
+// Package stream defines the BUSY Bar local status stream contract.
 package stream

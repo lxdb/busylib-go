@@ -282,11 +282,11 @@ type PlayAudio struct {
 }
 
 type AudioVolumeInfo struct {
-	Volume float64 `json:"volume"`
+	Volume int `json:"volume"`
 }
 
 type SetAudioVolumeRequest struct {
-	Volume float64
+	Volume int
 	Silent bool
 }
 
@@ -308,7 +308,7 @@ type StorageList struct {
 type StorageListElement struct {
 	Type StorageListElementType `json:"type"`
 	Name string                 `json:"name"`
-	Size int64                  `json:"size,omitempty"`
+	Size uint64                 `json:"size,omitempty"`
 }
 
 type StorageListElementType string
@@ -319,9 +319,9 @@ const (
 )
 
 type StorageStatus struct {
-	UsedBytes  int64 `json:"used_bytes"`
-	FreeBytes  int64 `json:"free_bytes"`
-	TotalBytes int64 `json:"total_bytes"`
+	UsedBytes  uint64 `json:"used_bytes"`
+	FreeBytes  uint64 `json:"free_bytes"`
+	TotalBytes uint64 `json:"total_bytes"`
 }
 
 type BusySnapshot struct {

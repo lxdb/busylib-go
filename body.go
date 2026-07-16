@@ -13,6 +13,8 @@ type Body interface {
 	prepareBody() (*preparedBody, error)
 }
 
+// ProgressFunc reports bytes read from a request body for the current attempt.
+// total is -1 when the body length is unknown. A retry starts written at zero.
 type ProgressFunc func(written, total int64)
 
 type preparedBody struct {

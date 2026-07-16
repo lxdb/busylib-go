@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -13,19 +14,65 @@ const (
 	ExpectedOperationCount     = 68
 	ExpectedSyncOperationCount = 67
 	StreamPhase                = 6
+	ExpectedStreamUpdateKinds  = 15
 )
 
 // Contract is an independently recorded audit of the BUSY Bar firmware HTTP
 // handlers. It contains contract facts and source provenance, not copied
 // firmware implementation code.
 type Contract struct {
-	Repository     string      `json:"repository"`
-	Branch         string      `json:"branch"`
-	FirmwareCommit string      `json:"firmwareCommit"`
-	APIVersion     string      `json:"apiVersion"`
-	ProtobufCommit string      `json:"protobufCommit"`
-	License        string      `json:"license"`
-	Operations     []Operation `json:"operations"`
+	Repository     string               `json:"repository"`
+	Branch         string               `json:"branch"`
+	FirmwareCommit string               `json:"firmwareCommit"`
+	APIVersion     string               `json:"apiVersion"`
+	ProtobufCommit string               `json:"protobufCommit"`
+	License        string               `json:"license"`
+	StatusStream   StatusStreamContract `json:"statusStream"`
+	Frames         FrameContract        `json:"frames"`
+	Operations     []Operation          `json:"operations"`
+}
+
+type StatusStreamContract struct {
+	Path                      string            `json:"path"`
+	AccessKeyQuery            string            `json:"accessKeyQuery"`
+	APISemVerQuery            string            `json:"apiSemVerQuery"`
+	InitialControl            string            `json:"initialControl"`
+	SnapshotControl           string            `json:"snapshotControl"`
+	MaxClients                int               `json:"maxClients"`
+	FrameIntervalMS           int               `json:"frameIntervalMs"`
+	PublisherHeartbeatMS      int               `json:"publisherHeartbeatMs"`
+	ClientHeartbeatIntervalMS int               `json:"clientHeartbeatIntervalMs"`
+	RateLimitMaxPackets       int               `json:"rateLimitMaxPackets"`
+	RateLimitPeriodMS         int               `json:"rateLimitPeriodMs"`
+	StateUpdateKinds          int               `json:"stateUpdateKinds"`
+	FrontFramesOnly           bool              `json:"frontFramesOnly"`
+	FatalErrorCause           string            `json:"fatalErrorCause"`
+	SourceReferences          []SourceReference `json:"sourceReferences"`
+}
+
+type FrameContract struct {
+	HTTPPath             string               `json:"httpPath"`
+	MaxPayloadBytes      int                  `json:"maxPayloadBytes"`
+	EmittedEncodings     []string             `json:"emittedEncodings"`
+	ProtobufPixelFormats []string             `json:"protobufPixelFormats"`
+	Front                FrameSurfaceContract `json:"front"`
+	Back                 FrameSurfaceContract `json:"back"`
+	SourceReferences     []SourceReference    `json:"sourceReferences"`
+}
+
+type FrameSurfaceContract struct {
+	Screen        int    `json:"screen"`
+	Width         int    `json:"width"`
+	Height        int    `json:"height"`
+	PixelFormat   string `json:"pixelFormat"`
+	PlainBytes    int    `json:"plainBytes"`
+	WireLayout    string `json:"wireLayout"`
+	RLEBlockBytes int    `json:"rleBlockBytes"`
+}
+
+type SourceReference struct {
+	SourceFile   string `json:"sourceFile"`
+	SourceSymbol string `json:"sourceSymbol"`
 }
 
 type Operation struct {
@@ -66,6 +113,12 @@ func (c Contract) Validate() error {
 	if len(c.Operations) != ExpectedOperationCount {
 		return fmt.Errorf("operation count = %d, want %d", len(c.Operations), ExpectedOperationCount)
 	}
+	if err := c.StatusStream.Validate(); err != nil {
+		return err
+	}
+	if err := c.Frames.Validate(); err != nil {
+		return err
+	}
 
 	seen := make(map[string]struct{}, len(c.Operations))
 	syncCount := 0
@@ -97,6 +150,78 @@ func (c Contract) Validate() error {
 	}
 	if operation, ok := c.Operation("GET /api/status/ws"); !ok || operation.Phase != StreamPhase {
 		return fmt.Errorf("GET /api/status/ws must be owned by phase %d", StreamPhase)
+	}
+	return nil
+}
+
+func (c StatusStreamContract) Validate() error {
+	if c.Path != "/api/status/ws" || c.AccessKeyQuery != "x-api-token" || c.APISemVerQuery != "x-api-sem-ver" {
+		return fmt.Errorf("status stream address or query contract is invalid")
+	}
+	if c.InitialControl != `{"enable":true,"send":"all"}` || c.SnapshotControl != `{"send":"all"}` {
+		return fmt.Errorf("status stream controls are invalid")
+	}
+	if c.MaxClients != 4 || c.FrameIntervalMS != 100 || c.PublisherHeartbeatMS != 991 || c.ClientHeartbeatIntervalMS != 10000 {
+		return fmt.Errorf("status stream limits or timing are invalid")
+	}
+	if c.RateLimitMaxPackets != 11 || c.RateLimitPeriodMS != 1000 {
+		return fmt.Errorf("status stream rate limit is invalid")
+	}
+	if c.StateUpdateKinds != ExpectedStreamUpdateKinds {
+		return fmt.Errorf("status stream update kinds = %d, want %d", c.StateUpdateKinds, ExpectedStreamUpdateKinds)
+	}
+	if !c.FrontFramesOnly || c.FatalErrorCause != "RESOURCE_LIMIT" {
+		return fmt.Errorf("status stream frame or fatal-error contract is invalid")
+	}
+	if len(c.SourceReferences) != 4 {
+		return fmt.Errorf("status stream source reference count = %d, want 4", len(c.SourceReferences))
+	}
+	for _, reference := range c.SourceReferences {
+		if reference.SourceFile == "" || reference.SourceSymbol == "" {
+			return fmt.Errorf("status stream source provenance is incomplete")
+		}
+	}
+	return nil
+}
+
+func (c FrameContract) Validate() error {
+	if c.HTTPPath != "/api/screen" || c.MaxPayloadBytes != 16_384 {
+		return fmt.Errorf("frame HTTP path or payload limit is invalid")
+	}
+	if !slices.Equal(c.EmittedEncodings, []string{"PLAIN", "RUN_LENGTH"}) {
+		return fmt.Errorf("firmware-emitted frame encodings are invalid")
+	}
+	if !slices.Equal(c.ProtobufPixelFormats, []string{"RGB888", "L8", "L4"}) {
+		return fmt.Errorf("frame protobuf pixel formats are invalid")
+	}
+	wantFront := FrameSurfaceContract{
+		Screen:        0,
+		Width:         72,
+		Height:        16,
+		PixelFormat:   "RGB888",
+		PlainBytes:    3456,
+		WireLayout:    "BGR",
+		RLEBlockBytes: 3,
+	}
+	wantBack := FrameSurfaceContract{
+		Screen:        1,
+		Width:         160,
+		Height:        80,
+		PixelFormat:   "L4",
+		PlainBytes:    6400,
+		WireLayout:    "L4_LOW_NIBBLE_FIRST",
+		RLEBlockBytes: 2,
+	}
+	if c.Front != wantFront || c.Back != wantBack {
+		return fmt.Errorf("front or back frame contract is invalid")
+	}
+	if len(c.SourceReferences) != 8 {
+		return fmt.Errorf("frame source reference count = %d, want 8", len(c.SourceReferences))
+	}
+	for _, reference := range c.SourceReferences {
+		if reference.SourceFile == "" || reference.SourceSymbol == "" {
+			return fmt.Errorf("frame source provenance is incomplete")
+		}
 	}
 	return nil
 }

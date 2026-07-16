@@ -654,8 +654,8 @@ func validateBrightness(value string) error {
 	return nil
 }
 
-func validateVolume(volume float64) error {
-	if math.IsNaN(volume) || math.IsInf(volume, 0) || volume < 0 || volume > 100 {
+func validateVolume(volume int) error {
+	if volume < 0 || volume > 100 {
 		return errors.New("volume must be between 0 and 100")
 	}
 	return nil

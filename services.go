@@ -234,14 +234,14 @@ func (s AudioService) SetVolume(ctx context.Context, request SetAudioVolumeReque
 	if err := validateVolume(request.Volume); err != nil {
 		return validationError(http.MethodPost, "/api/audio/volume", err.Error(), err)
 	}
-	query := url.Values{"volume": []string{strconv.FormatFloat(request.Volume, 'f', -1, 64)}}
+	query := url.Values{"volume": []string{strconv.Itoa(request.Volume)}}
 	if request.Silent {
 		query.Set("silent", "1")
 	}
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/audio/volume", query, nil)
 }
 
-func (s AudioService) SetVolumeSilently(ctx context.Context, volume float64) error {
+func (s AudioService) SetVolumeSilently(ctx context.Context, volume int) error {
 	return s.SetVolume(ctx, SetAudioVolumeRequest{Volume: volume, Silent: true})
 }
 

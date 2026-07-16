@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	framepkg "github.com/lxdb/busylib-go/frame"
 	internalapi "github.com/lxdb/busylib-go/internal/api"
 )
 
@@ -707,6 +708,7 @@ func TestAudioHelperMethodsSendDocumentedPayloads(t *testing.T) {
 	}{
 		{method: http.MethodPost, path: "/api/audio/play", body: `{"application_name":"app","path":"tone.snd"}`},
 		{method: http.MethodPost, path: "/api/audio/play", body: `{"application_name":"app","stock_path":"shared/tone.snd"}`},
+		{method: http.MethodPost, path: "/api/audio/volume", query: "volume=30"},
 		{method: http.MethodPost, path: "/api/audio/volume", query: "silent=1&volume=25"},
 	}
 	var index int
@@ -742,6 +744,9 @@ func TestAudioHelperMethodsSendDocumentedPayloads(t *testing.T) {
 	if err := client.Audio().PlayStock(ctx, "app", "shared/tone.snd"); err != nil {
 		t.Fatalf("PlayStock: %v", err)
 	}
+	if err := client.Audio().SetVolume(ctx, SetAudioVolumeRequest{Volume: 30}); err != nil {
+		t.Fatalf("SetVolume: %v", err)
+	}
 	if err := client.Audio().SetVolumeSilently(ctx, 25); err != nil {
 		t.Fatalf("SetVolumeSilently: %v", err)
 	}
@@ -750,7 +755,171 @@ func TestAudioHelperMethodsSendDocumentedPayloads(t *testing.T) {
 	}
 }
 
-func TestAssetAndStorageFileHelpersUseRepeatableFileBodies(t *testing.T) {
+func TestDisplayGlobalClearAndFrontScreenFetch(t *testing.T) {
+	var calls int
+	client, err := NewClient(
+		WithBaseURL("http://busybar.local"),
+		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			calls++
+			switch calls {
+			case 1:
+				if r.Method != http.MethodDelete || r.URL.Path != "/api/display/draw" || r.URL.RawQuery != "" {
+					t.Fatalf("global clear request = %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
+				}
+				return jsonResponse(http.StatusOK, map[string]string{"result": "OK"}), nil
+			case 2:
+				if r.Method != http.MethodGet || r.URL.Path != "/api/screen" || r.URL.RawQuery != "display=0" {
+					t.Fatalf("front screen request = %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Status:     http.StatusText(http.StatusOK),
+					Header:     http.Header{"Content-Type": []string{"application/octet-stream"}},
+					Body:       io.NopCloser(bytes.NewReader([]byte{1, 2, 3})),
+				}, nil
+			default:
+				t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+				return nil, nil
+			}
+		})}),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	client.setCachedAPISemVerForTest("24.4.0")
+
+	if err := client.Display().Clear(context.Background(), ""); err != nil {
+		t.Fatalf("Clear global: %v", err)
+	}
+	frame, err := client.Display().Screen(context.Background(), 0)
+	if err != nil {
+		t.Fatalf("Screen front: %v", err)
+	}
+	if !bytes.Equal(frame, []byte{1, 2, 3}) {
+		t.Fatalf("front frame = %v", frame)
+	}
+}
+
+func TestDisplayScreenFrameDecodesHTTPResponse(t *testing.T) {
+	raw := make([]byte, framepkg.FrontWidth*framepkg.FrontHeight*3)
+	raw[0], raw[1], raw[2] = 0x11, 0x22, 0x33
+	client, err := NewClient(
+		WithBaseURL("http://busybar.local"),
+		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if r.Method != http.MethodGet || r.URL.Path != "/api/screen" || r.URL.RawQuery != "display=0" {
+				t.Fatalf("screen request = %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Status:     http.StatusText(http.StatusOK),
+				Header:     http.Header{"Content-Type": []string{"application/octet-stream"}},
+				Body:       io.NopCloser(bytes.NewReader(raw)),
+			}, nil
+		})}),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	client.setCachedAPISemVerForTest("24.4.0")
+
+	payload, err := client.Display().Screen(context.Background(), 0)
+	if err != nil {
+		t.Fatalf("Screen: %v", err)
+	}
+	value, err := framepkg.FromHTTP(0, payload)
+	if err != nil {
+		t.Fatalf("FromHTTP: %v", err)
+	}
+	rgba, err := value.RGBA()
+	if err != nil {
+		t.Fatalf("RGBA: %v", err)
+	}
+	if pixel := rgba.RGBAAt(0, 0); pixel.R != 0x33 || pixel.G != 0x22 || pixel.B != 0x11 || pixel.A != 0xff {
+		t.Fatalf("first pixel = %#v", pixel)
+	}
+}
+
+func TestPhase5FirmwareErrorsRemainTyped(t *testing.T) {
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		statusCode int
+		message    string
+		call       func(context.Context, *Client) error
+	}{
+		{
+			name:       "stop with no audio",
+			method:     http.MethodDelete,
+			path:       "/api/audio/play",
+			statusCode: http.StatusGone,
+			message:    "No audio is playing",
+			call: func(ctx context.Context, client *Client) error {
+				return client.Audio().Stop(ctx)
+			},
+		},
+		{
+			name:       "asset payload too large",
+			method:     http.MethodPost,
+			path:       "/api/assets/upload",
+			statusCode: http.StatusRequestEntityTooLarge,
+			message:    "Payload too large",
+			call: func(ctx context.Context, client *Client) error {
+				return client.Assets().Upload(ctx, UploadAssetRequest{
+					ApplicationName: "app",
+					File:            "asset.bin",
+					Body:            BytesBody([]byte("payload"), "application/octet-stream"),
+				})
+			},
+		},
+		{
+			name:       "storage payload too large",
+			method:     http.MethodPost,
+			path:       "/api/storage/write",
+			statusCode: http.StatusRequestEntityTooLarge,
+			message:    "Payload too large",
+			call: func(ctx context.Context, client *Client) error {
+				return client.Storage().Write(ctx, WriteStorageFileRequest{
+					Path: "/ext/payload.bin",
+					Body: BytesBody([]byte("payload"), "application/octet-stream"),
+				})
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			client, err := NewClient(
+				WithBaseURL("http://busybar.local"),
+				WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+					if r.Method != tc.method || r.URL.Path != tc.path {
+						t.Fatalf("request = %s %s, want %s %s", r.Method, r.URL.Path, tc.method, tc.path)
+					}
+					if r.Body != nil {
+						_, _ = io.Copy(io.Discard, r.Body)
+						_ = r.Body.Close()
+					}
+					return jsonResponse(tc.statusCode, map[string]string{"error": tc.message}), nil
+				})}),
+			)
+			if err != nil {
+				t.Fatalf("NewClient: %v", err)
+			}
+			client.setCachedAPISemVerForTest("24.4.0")
+
+			err = tc.call(context.Background(), client)
+			var apiErr *APIError
+			if !errors.As(err, &apiErr) {
+				t.Fatalf("error = %T %v, want APIError", err, err)
+			}
+			if apiErr.Method != tc.method || apiErr.Path != tc.path || apiErr.StatusCode != tc.statusCode || apiErr.DeviceError != tc.message {
+				t.Fatalf("APIError = method %s path %s status %d message %q", apiErr.Method, apiErr.Path, apiErr.StatusCode, apiErr.DeviceError)
+			}
+		})
+	}
+}
+
+func TestAssetAndStorageFileHelpersUseRepeatableFileBodiesAndPreserveExtensions(t *testing.T) {
 	ctx := context.Background()
 	tempDir := t.TempDir()
 	localPath := filepath.Join(tempDir, "payload.bin")
@@ -764,7 +933,7 @@ func TestAssetAndStorageFileHelpersUseRepeatableFileBodies(t *testing.T) {
 		query  string
 	}{
 		{method: http.MethodPost, path: "/api/assets/upload", query: "application_name=app&file=asset.bin"},
-		{method: http.MethodPost, path: "/api/storage/write", query: "path=%2Fext%2Fpayload.bin"},
+		{method: http.MethodPost, path: "/api/storage/write", query: "path=%2Fext%2Fpayload.unknown"},
 	}
 	var index int
 	client, err := NewClient(
@@ -802,7 +971,7 @@ func TestAssetAndStorageFileHelpersUseRepeatableFileBodies(t *testing.T) {
 	if err := client.Assets().UploadFile(ctx, "app", "asset.bin", localPath); err != nil {
 		t.Fatalf("UploadFile: %v", err)
 	}
-	if err := client.Storage().WriteFile(ctx, "/ext/payload.bin", localPath); err != nil {
+	if err := client.Storage().WriteFile(ctx, "/ext/payload.unknown", localPath); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	if index != len(calls) {
@@ -828,7 +997,7 @@ func TestStorageReadToStreamsResponseAndPreservesAPIErrors(t *testing.T) {
 					Body:       io.NopCloser(strings.NewReader("streamed payload")),
 				}, nil
 			}
-			return jsonResponse(http.StatusRequestEntityTooLarge, map[string]string{"error": "payload too large"}), nil
+			return jsonResponse(http.StatusBadRequest, map[string]string{"error": "file not found"}), nil
 		})}),
 	)
 	if err != nil {
@@ -850,8 +1019,59 @@ func TestStorageReadToStreamsResponseAndPreservesAPIErrors(t *testing.T) {
 	if !errors.As(err, &apiErr) {
 		t.Fatalf("error = %T %v, want APIError", err, err)
 	}
-	if apiErr.StatusCode != http.StatusRequestEntityTooLarge || apiErr.DeviceError != "payload too large" {
+	if apiErr.StatusCode != http.StatusBadRequest || apiErr.DeviceError != "file not found" {
 		t.Fatalf("APIError = status %d error %q", apiErr.StatusCode, apiErr.DeviceError)
+	}
+}
+
+func TestStorageResponseModelsMatchFirmwareUnsignedShapes(t *testing.T) {
+	const aboveMaxInt64 uint64 = 1 << 63
+	client, err := NewClient(
+		WithBaseURL("http://busybar.local"),
+		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			switch r.URL.Path {
+			case "/api/storage/list":
+				return jsonResponse(http.StatusOK, map[string]any{
+					"list": []map[string]any{
+						{"type": "file", "name": "payload.bin", "size": uint64(7)},
+						{"type": "dir", "name": "assets"},
+					},
+				}), nil
+			case "/api/storage/status":
+				return jsonResponse(http.StatusOK, map[string]uint64{
+					"used_bytes":  aboveMaxInt64,
+					"free_bytes":  2,
+					"total_bytes": aboveMaxInt64 + 2,
+				}), nil
+			default:
+				t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+				return nil, nil
+			}
+		})}),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	client.setCachedAPISemVerForTest("24.4.0")
+
+	list, err := client.Storage().List(context.Background(), "/ext")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	wantList := StorageList{List: []StorageListElement{
+		{Type: StorageListElementFile, Name: "payload.bin", Size: 7},
+		{Type: StorageListElementDir, Name: "assets"},
+	}}
+	if !reflect.DeepEqual(list, wantList) {
+		t.Fatalf("List = %#v, want %#v", list, wantList)
+	}
+
+	status, err := client.Storage().Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if status.UsedBytes != aboveMaxInt64 || status.FreeBytes != 2 || status.TotalBytes != aboveMaxInt64+2 {
+		t.Fatalf("Status = %#v", status)
 	}
 }
 
@@ -906,9 +1126,6 @@ func TestServiceValidationRejectsInvalidInputsBeforeNetwork(t *testing.T) {
 		{"update changelog", func() error { _, err := client.Update().Changelog(ctx, ""); return err }},
 		{"update install", func() error { return client.Update().Install(ctx, "") }},
 		{"update autoupdate", func() error { return client.Update().SetAutoupdate(ctx, AutoupdateSettings{IntervalEnd: "24:00"}) }},
-		{"volume nan", func() error { return client.Audio().SetVolume(ctx, SetAudioVolumeRequest{Volume: math.NaN()}) }},
-		{"volume positive infinity", func() error { return client.Audio().SetVolume(ctx, SetAudioVolumeRequest{Volume: math.Inf(1)}) }},
-		{"volume negative infinity", func() error { return client.Audio().SetVolume(ctx, SetAudioVolumeRequest{Volume: math.Inf(-1)}) }},
 	}
 	for _, check := range checks {
 		t.Run(check.name, func(t *testing.T) {

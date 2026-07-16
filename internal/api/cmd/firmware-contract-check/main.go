@@ -12,7 +12,11 @@ import (
 	internalapi "github.com/lxdb/busylib-go/internal/api"
 )
 
-var apiVersionPattern = regexp.MustCompile(`#define\s+API_VERSION\s+\{\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\}`)
+var (
+	apiVersionPattern = regexp.MustCompile(`#define\s+API_VERSION\s+\{\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\}`)
+	defineIntPattern  = regexp.MustCompile(`#define\s+([A-Z][A-Z0-9_]*)\s+\(?\s*(\d+)\s*\)?`)
+	rateLimitPattern  = regexp.MustCompile(`\.max_packet_count\s*=\s*(\d+)\s*,\s*\.period_ms\s*=\s*(\d+)`)
+)
 
 func main() {
 	firmwareDir := flag.String("firmware-dir", "", "path to the busybar-firmware checkout")
@@ -29,7 +33,7 @@ func main() {
 	if err := checkFirmware(*firmwareDir, contract); err != nil {
 		fatalf("firmware contract drift: %v", err)
 	}
-	fmt.Printf("firmware contract matches %s at %s (API %s, %d operations)\n", contract.Repository, contract.FirmwareCommit, contract.APIVersion, len(contract.Operations))
+	fmt.Printf("firmware contract matches %s at %s (API %s, %d operations, status stream and frames verified)\n", contract.Repository, contract.FirmwareCommit, contract.APIVersion, len(contract.Operations))
 }
 
 func checkFirmware(root string, contract internalapi.Contract) error {
@@ -81,7 +85,213 @@ func checkFirmware(root string, contract internalapi.Contract) error {
 			return fmt.Errorf("%s source symbol %q is missing from %s", operation.ID(), operation.SourceSymbol, operation.SourceFile)
 		}
 	}
+	if err := checkStatusStream(root, contract.StatusStream, checked); err != nil {
+		return err
+	}
+	return checkFrames(root, contract.Frames, checked)
+}
+
+func checkStatusStream(root string, contract internalapi.StatusStreamContract, checked map[string][]byte) error {
+	for _, reference := range contract.SourceReferences {
+		data, err := readFirmwareFile(root, reference.SourceFile, checked)
+		if err != nil {
+			return fmt.Errorf("status stream: %w", err)
+		}
+		if !strings.Contains(string(data), reference.SourceSymbol) {
+			return fmt.Errorf("status stream source symbol %q is missing from %s", reference.SourceSymbol, reference.SourceFile)
+		}
+	}
+
+	const (
+		streamSource    = "applications/services/web_server/http_api/api_status_streaming.c"
+		rootSource      = "applications/services/web_server/http_api/api_root.c"
+		publisherSource = "applications/services/state_publisher/state_publisher.c"
+	)
+	streamData, err := readFirmwareFile(root, streamSource, checked)
+	if err != nil {
+		return err
+	}
+	rootData, err := readFirmwareFile(root, rootSource, checked)
+	if err != nil {
+		return err
+	}
+	publisherData, err := readFirmwareFile(root, publisherSource, checked)
+	if err != nil {
+		return err
+	}
+
+	if err := checkDefine(streamSource, streamData, "MAX_CLIENTS_COUNT", contract.MaxClients); err != nil {
+		return err
+	}
+	if err := checkDefine(streamSource, streamData, "FRAME_INTERVAL_MS", contract.FrameIntervalMS); err != nil {
+		return err
+	}
+	if err := checkDefine(streamSource, streamData, "CLIENT_HEARTBEAT_INTERVAL_MS", contract.ClientHeartbeatIntervalMS); err != nil {
+		return err
+	}
+	if err := checkDefine(publisherSource, publisherData, "HEARTBEAT_INTERVAL_MS", contract.PublisherHeartbeatMS); err != nil {
+		return err
+	}
+
+	rateLimit := rateLimitPattern.FindSubmatch(streamData)
+	if rateLimit == nil || string(rateLimit[1]) != fmt.Sprint(contract.RateLimitMaxPackets) || string(rateLimit[2]) != fmt.Sprint(contract.RateLimitPeriodMS) {
+		return fmt.Errorf("%s rate limit does not match receipt (%d packets per %d ms)", streamSource, contract.RateLimitMaxPackets, contract.RateLimitPeriodMS)
+	}
+
+	for _, required := range []struct {
+		file string
+		data []byte
+		text string
+	}{
+		{streamSource, streamData, `"$.enable"`},
+		{streamSource, streamData, `"$.send"`},
+		{streamSource, streamData, `strcmp("all", send_value)`},
+		{streamSource, streamData, "BSB_Error_Severity_FATAL"},
+		{streamSource, streamData, "BSB_Error_Cause_" + contract.FatalErrorCause},
+		{rootSource, rootData, `"` + contract.AccessKeyQuery + `"`},
+		{rootSource, rootData, `"` + contract.APISemVerQuery + `"`},
+		{publisherSource, publisherData, "state_publisher_send_complete_snapshot"},
+		{publisherSource, publisherData, "state_publisher_collect_all"},
+		{publisherSource, publisherData, "screen_streamer_front"},
+		{publisherSource, publisherData, "GuiDisplayIdFront"},
+	} {
+		if !strings.Contains(string(required.data), required.text) {
+			return fmt.Errorf("%s is missing %q", required.file, required.text)
+		}
+	}
+	if contract.FrontFramesOnly && strings.Contains(string(publisherData), "screen_streamer_back") {
+		return fmt.Errorf("%s now contains a back-display streamer; refresh the status stream receipt", publisherSource)
+	}
 	return nil
+}
+
+func checkFrames(root string, contract internalapi.FrameContract, checked map[string][]byte) error {
+	for _, reference := range contract.SourceReferences {
+		data, err := readFirmwareFile(root, reference.SourceFile, checked)
+		if err != nil {
+			return fmt.Errorf("frames: %w", err)
+		}
+		if !strings.Contains(string(data), reference.SourceSymbol) {
+			return fmt.Errorf("frame source symbol %q is missing from %s", reference.SourceSymbol, reference.SourceFile)
+		}
+	}
+
+	const (
+		httpSource          = "applications/services/web_server/http_api/api_streaming.c"
+		streamerSource      = "applications/services/state_publisher/screen_streamer.c"
+		subscriptionsSource = "applications/services/state_publisher/subscriptions.c"
+		colorSource         = "lib/toolbox/color.c"
+		frontSource         = "applications/services/front_display/front_display.h"
+		backSource          = "applications/services/back_display/back_display.h"
+		canvasSource        = "applications/services/gui/modules/canvas.c"
+	)
+	httpData, err := readFirmwareFile(root, httpSource, checked)
+	if err != nil {
+		return err
+	}
+	streamerData, err := readFirmwareFile(root, streamerSource, checked)
+	if err != nil {
+		return err
+	}
+	subscriptionsData, err := readFirmwareFile(root, subscriptionsSource, checked)
+	if err != nil {
+		return err
+	}
+	colorData, err := readFirmwareFile(root, colorSource, checked)
+	if err != nil {
+		return err
+	}
+	frontData, err := readFirmwareFile(root, frontSource, checked)
+	if err != nil {
+		return err
+	}
+	backData, err := readFirmwareFile(root, backSource, checked)
+	if err != nil {
+		return err
+	}
+	canvasData, err := readFirmwareFile(root, canvasSource, checked)
+	if err != nil {
+		return err
+	}
+
+	for _, check := range []struct {
+		file string
+		data []byte
+		name string
+		want int
+	}{
+		{frontSource, frontData, "FRONT_DISPLAY_W", contract.Front.Width},
+		{frontSource, frontData, "FRONT_DISPLAY_H", contract.Front.Height},
+		{frontSource, frontData, "FRONT_DISPLAY_BPP", 24},
+		{backSource, backData, "BACK_DISPLAY_W", contract.Back.Width},
+		{backSource, backData, "BACK_DISPLAY_H", contract.Back.Height},
+		{backSource, backData, "BACK_DISPLAY_BPP", 8},
+	} {
+		if err := checkDefine(check.file, check.data, check.name, check.want); err != nil {
+			return err
+		}
+	}
+	if contract.Front.PlainBytes != contract.Front.Width*contract.Front.Height*3 {
+		return fmt.Errorf("front frame plain size = %d, dimensions require %d", contract.Front.PlainBytes, contract.Front.Width*contract.Front.Height*3)
+	}
+	if contract.Back.PlainBytes != contract.Back.Width*contract.Back.Height/2 {
+		return fmt.Errorf("back frame plain size = %d, dimensions require %d", contract.Back.PlainBytes, contract.Back.Width*contract.Back.Height/2)
+	}
+
+	for _, required := range []struct {
+		file string
+		data []byte
+		text string
+	}{
+		{httpSource, httpData, "FRONT_DISPLAY_BUF_SIZE"},
+		{httpSource, httpData, "BACK_DISPLAY_BUF_SIZE"},
+		{httpSource, httpData, "color_buf_l8_to_l4"},
+		{streamerSource, streamerData, "ScreenStreamerPixelFormatR8G8B8"},
+		{streamerSource, streamerData, "ScreenStreamerPixelFormatL4"},
+		{streamerSource, streamerData, "const uint8_t blk_size = instance->display_id == GuiDisplayIdFront ? 3 : 2;"},
+		{streamerSource, streamerData, "ScreenStreamerCompressionRLE"},
+		{streamerSource, streamerData, "ScreenStreamerCompressionPlain"},
+		{subscriptionsSource, subscriptionsData, "ScreenStreamerCompressionPlain] = BSB_Frame_Encoding_PLAIN"},
+		{subscriptionsSource, subscriptionsData, "ScreenStreamerCompressionRLE] = BSB_Frame_Encoding_RUN_LENGTH"},
+		{subscriptionsSource, subscriptionsData, "ScreenStreamerPixelFormatR8G8B8] = BSB_Frame_PixelFormat_RGB888"},
+		{subscriptionsSource, subscriptionsData, "ScreenStreamerPixelFormatL8] = BSB_Frame_PixelFormat_L8"},
+		{subscriptionsSource, subscriptionsData, "ScreenStreamerPixelFormatL4] = BSB_Frame_PixelFormat_L4"},
+		{subscriptionsSource, subscriptionsData, "GuiDisplayIdFront] = BSB_Frame_Screen_FRONT"},
+		{subscriptionsSource, subscriptionsData, "GuiDisplayIdBack] = BSB_Frame_Screen_BACK"},
+		{colorSource, colorData, "(src_u8[src_i] >> 4) | (src_u8[src_i + 1] & 0xF0)"},
+		{canvasSource, canvasData, "data[2] = color.red;"},
+		{canvasSource, canvasData, "data[1] = color.green;"},
+		{canvasSource, canvasData, "data[0] = color.blue;"},
+	} {
+		if !strings.Contains(string(required.data), required.text) {
+			return fmt.Errorf("%s is missing %q", required.file, required.text)
+		}
+	}
+	return nil
+}
+
+func readFirmwareFile(root, sourceFile string, checked map[string][]byte) ([]byte, error) {
+	if data, ok := checked[sourceFile]; ok {
+		return data, nil
+	}
+	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(sourceFile)))
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", sourceFile, err)
+	}
+	checked[sourceFile] = data
+	return data, nil
+}
+
+func checkDefine(sourceFile string, data []byte, name string, want int) error {
+	for _, match := range defineIntPattern.FindAllSubmatch(data, -1) {
+		if string(match[1]) == name {
+			if string(match[2]) != fmt.Sprint(want) {
+				return fmt.Errorf("%s %s = %s, receipt = %d", sourceFile, name, match[2], want)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("%s is missing integer define %s", sourceFile, name)
 }
 
 func gitOutput(root string, args ...string) (string, error) {

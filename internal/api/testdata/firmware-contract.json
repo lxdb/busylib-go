@@ -5,6 +5,105 @@
   "apiVersion": "24.4.0",
   "protobufCommit": "07223321a4ab39a13c5167dbf85c87c418325634",
   "license": "GPL-2.0-or-later",
+  "statusStream": {
+    "path": "/api/status/ws",
+    "accessKeyQuery": "x-api-token",
+    "apiSemVerQuery": "x-api-sem-ver",
+    "initialControl": "{\"enable\":true,\"send\":\"all\"}",
+    "snapshotControl": "{\"send\":\"all\"}",
+    "maxClients": 4,
+    "frameIntervalMs": 100,
+    "publisherHeartbeatMs": 991,
+    "clientHeartbeatIntervalMs": 10000,
+    "rateLimitMaxPackets": 11,
+    "rateLimitPeriodMs": 1000,
+    "stateUpdateKinds": 15,
+    "frontFramesOnly": true,
+    "fatalErrorCause": "RESOURCE_LIMIT",
+    "sourceReferences": [
+      {
+        "sourceFile": "applications/services/web_server/http_api/api_status_streaming.c",
+        "sourceSymbol": "http_api_status_ws_callback"
+      },
+      {
+        "sourceFile": "applications/services/web_server/http_api/api_root.c",
+        "sourceSymbol": "http_api_is_version_allowed"
+      },
+      {
+        "sourceFile": "applications/services/state_publisher/state_publisher.c",
+        "sourceSymbol": "state_publisher_send_complete_snapshot"
+      },
+      {
+        "sourceFile": "applications/services/state_publisher/subscriptions.c",
+        "sourceSymbol": "state_publisher_collect_all"
+      }
+    ]
+  },
+  "frames": {
+    "httpPath": "/api/screen",
+    "maxPayloadBytes": 16384,
+    "emittedEncodings": [
+      "PLAIN",
+      "RUN_LENGTH"
+    ],
+    "protobufPixelFormats": [
+      "RGB888",
+      "L8",
+      "L4"
+    ],
+    "front": {
+      "screen": 0,
+      "width": 72,
+      "height": 16,
+      "pixelFormat": "RGB888",
+      "plainBytes": 3456,
+      "wireLayout": "BGR",
+      "rleBlockBytes": 3
+    },
+    "back": {
+      "screen": 1,
+      "width": 160,
+      "height": 80,
+      "pixelFormat": "L4",
+      "plainBytes": 6400,
+      "wireLayout": "L4_LOW_NIBBLE_FIRST",
+      "rleBlockBytes": 2
+    },
+    "sourceReferences": [
+      {
+        "sourceFile": "applications/services/web_server/http_api/api_streaming.c",
+        "sourceSymbol": "http_api_streaming_single_frame_callback"
+      },
+      {
+        "sourceFile": "applications/services/state_publisher/screen_streamer.c",
+        "sourceSymbol": "frame_data_init"
+      },
+      {
+        "sourceFile": "applications/services/state_publisher/screen_streamer.c",
+        "sourceSymbol": "get_frame"
+      },
+      {
+        "sourceFile": "applications/services/state_publisher/subscriptions.c",
+        "sourceSymbol": "collect_frame"
+      },
+      {
+        "sourceFile": "lib/toolbox/color.c",
+        "sourceSymbol": "color_buf_l8_to_l4"
+      },
+      {
+        "sourceFile": "applications/services/front_display/front_display.h",
+        "sourceSymbol": "FRONT_DISPLAY_W"
+      },
+      {
+        "sourceFile": "applications/services/back_display/back_display.h",
+        "sourceSymbol": "BACK_DISPLAY_W"
+      },
+      {
+        "sourceFile": "applications/services/gui/modules/canvas.c",
+        "sourceSymbol": "lv_canvas_set_px_no_invalidate"
+      }
+    ]
+  },
   "operations": [
     {
       "method": "GET",

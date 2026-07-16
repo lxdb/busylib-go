@@ -2,8 +2,8 @@
 
 Go library for BUSY Bar devices.
 
-This repository currently contains the completed Phase 3 and Phase 4 local
-HTTP contract implementation, plus Phase 5 helpers in progress:
+This repository currently contains the completed Phase 3 through Phase 7 local
+device implementation:
 
 - Go module: `github.com/lxdb/busylib-go`
 - Root `busylib.Client` request execution for direct-device and explicit proxy modes
@@ -15,13 +15,17 @@ HTTP contract implementation, plus Phase 5 helpers in progress:
 - Firmware-aligned request/response models and validation, including Wi-Fi,
   Matter partial updates, display/path rules, and Busy timer structures
 - Display, asset, storage, and audio helpers for common app workflows
+- A local `/api/status/ws` stream with typed protobuf updates, raw messages,
+  lifecycle status, stale-data detection, bounded reconnect, and snapshot requests
+- Firmware-aligned HTTP and status-stream frame decoding with raw pixels,
+  Plain/RLE support, and portable RGBA output
 - Generated protobuf packages for the BUSY Bar status stream
 - Local copies of the firmware-selected protobuf inputs
 - A pinned firmware contract audit receipt with source provenance
 - Reproducible protobuf generation and an optional firmware contract checker
 
-Status streams, frame decoding, snapshots, USB diagnostics, and converters are
-intentionally deferred to later phases.
+Dashboard snapshots, USB diagnostics, and converters are intentionally deferred
+to later phases.
 
 ## Typed HTTP Services
 
@@ -53,7 +57,7 @@ err = client.Display().Draw(ctx, busylib.DisplayElements{
 })
 ```
 
-Phase 5 also exposes constructors for common display and audio payloads:
+Phase 5 exposes constructors for common display and audio payloads:
 
 ```go
 err = client.Display().Draw(ctx, busylib.NewDisplayElements(
@@ -79,8 +83,81 @@ n, err := client.Storage().ReadTo(ctx, "/ext/data.bin", &out)
 
 The service groups are `System`, `Settings`, `Display`, `Audio`, `Assets`,
 `Storage`, `Busy`, `Account`, `BLE`, `WiFi`, `Input`, `SmartHome`, `Time`, and
-`Update`. The `/api/status/ws` WebSocket operation is deliberately reserved for
-the stream phase.
+`Update`.
+
+## Local Status Stream
+
+`Client.NewStatusStream` creates a one-shot local stream. It reuses the
+client's local access key, API-version negotiation, HTTP transport, and timeout:
+
+```go
+statusStream, err := client.NewStatusStream(
+	stream.WithStaleAfter(5*time.Second),
+	stream.WithReconnectPolicy(stream.ReconnectPolicy{
+		MaxAttempts: 5,
+		Delay:       time.Second,
+	}),
+)
+if err != nil {
+	// handle configuration error
+}
+if err := statusStream.Start(ctx); err != nil {
+	// handle initial connection failure
+}
+defer statusStream.Stop()
+
+for message := range statusStream.Messages() {
+	for _, update := range message.Updates {
+		// inspect update.Kind() or its concrete typed update
+	}
+}
+```
+
+The initial control is `{"enable":true,"send":"all"}`. Use
+`RequestSnapshot(ctx)` to send another `{"send":"all"}` request. Binary
+messages preserve raw bytes and decoded `statepb.State`; text messages pass
+through unchanged. Decode errors remain attached to their message, while only
+terminal failures appear on `Errors()`. `Statuses()` reports lifecycle, access,
+and data freshness. Status streaming is local-only and is rejected in proxy
+mode.
+
+## Frame Decoding
+
+The `frame` package keeps HTTP and status-stream transport separate from frame
+conversion. Existing client and stream APIs continue to expose their raw data:
+
+```go
+raw, err := client.Display().Screen(ctx, 0)
+if err != nil {
+	// handle screen fetch error
+}
+
+displayFrame, err := frame.FromHTTP(0, raw)
+if err != nil {
+	// handle invalid frame metadata or payload
+}
+rgba, err := displayFrame.RGBA()
+```
+
+Status-stream frame updates use the same decoder:
+
+```go
+update, ok := update.(stream.FrameUpdate)
+if ok {
+	displayFrame, err := frame.FromProto(update.Value)
+	if err == nil {
+		rgba, err := displayFrame.RGBA()
+		_ = rgba
+		_ = err
+	}
+}
+```
+
+`Frame.Pixels` returns a fresh uncompressed byte slice in the protobuf pixel
+format; L4 remains packed. `Frame.RGBA` returns `*image.RGBA`. Current firmware
+uses front `72x16` BGR bytes despite the protobuf `RGB888` name, and back
+`160x80` L4 bytes with the low nibble first. Unsupported or unknown enum values
+remain visible on `Frame` and conversion returns a typed `frame.Error`.
 
 ## Request Core
 
@@ -165,7 +242,7 @@ Other busylib implementations and the historical OpenAPI snapshot are research
 inputs only and cannot override firmware handlers, validation, serialization,
 or constants.
 
-The Phase 3/4 audit used
+The Phase 3 through Phase 7 implementation audit used
 `https://github.com/busy-app/busybar-firmware.git` at commit
 `1add7be4f1fd31cbd0763c4c20add1ff6382232e` (branch `dev`, API `24.4.0`).
 Firmware selects protobuf commit
