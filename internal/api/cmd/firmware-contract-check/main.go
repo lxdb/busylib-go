@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	internalapi "github.com/lxdb/busylib-go/internal/api"
@@ -16,6 +17,7 @@ var (
 	apiVersionPattern = regexp.MustCompile(`#define\s+API_VERSION\s+\{\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\}`)
 	defineIntPattern  = regexp.MustCompile(`#define\s+([A-Z][A-Z0-9_]*)\s+\(?\s*(\d+)\s*\)?`)
 	rateLimitPattern  = regexp.MustCompile(`\.max_packet_count\s*=\s*(\d+)\s*,\s*\.period_ms\s*=\s*(\d+)`)
+	blocklistPattern  = regexp.MustCompile(`(?s)\{\s*\.name\s*=\s*"([^"]+)"\s*,\s*\.id\s*=\s*(MqttHttpProxyMethodId[A-Za-z]+)\s*,?\s*\}`)
 )
 
 func main() {
@@ -33,7 +35,7 @@ func main() {
 	if err := checkFirmware(*firmwareDir, contract); err != nil {
 		fatalf("firmware contract drift: %v", err)
 	}
-	fmt.Printf("firmware contract matches %s at %s (API %s, %d operations, status stream, frames, snapshots, and optional tools verified)\n", contract.Repository, contract.FirmwareCommit, contract.APIVersion, len(contract.Operations))
+	fmt.Printf("firmware contract matches %s at %s (API %s, %d operations, status stream, frames, snapshots, optional tools, and remote MQTT verified)\n", contract.Repository, contract.FirmwareCommit, contract.APIVersion, len(contract.Operations))
 }
 
 func checkFirmware(root string, contract internalapi.Contract) error {
@@ -94,7 +96,10 @@ func checkFirmware(root string, contract internalapi.Contract) error {
 	if err := checkSnapshots(root, contract, checked); err != nil {
 		return err
 	}
-	return checkOptionalTools(root, contract.OptionalTools, checked)
+	if err := checkOptionalTools(root, contract.OptionalTools, checked); err != nil {
+		return err
+	}
+	return checkRemoteMQTT(root, contract.Remote, checked)
 }
 
 func checkStatusStream(root string, contract internalapi.StatusStreamContract, checked map[string][]byte) error {
@@ -423,6 +428,178 @@ func checkOptionalTools(root string, contract internalapi.OptionalToolsContract,
 	return nil
 }
 
+func checkRemoteMQTT(root string, contract internalapi.RemoteContract, checked map[string][]byte) error {
+	for _, reference := range contract.SourceReferences {
+		data, err := readFirmwareFile(root, reference.SourceFile, checked)
+		if err != nil {
+			return fmt.Errorf("remote MQTT: %w", err)
+		}
+		if !strings.Contains(string(data), reference.SourceSymbol) {
+			return fmt.Errorf("remote MQTT source symbol %q is missing from %s", reference.SourceSymbol, reference.SourceFile)
+		}
+	}
+
+	const (
+		connectionSource   = "applications/services/mqtt/mqtt_connection.c"
+		internalSource     = "applications/services/mqtt/mqtt_i.h"
+		subscriptionSource = "applications/services/mqtt/mqtt_subscription.c"
+		messageSource      = "applications/services/mqtt/mqtt_message.c"
+		httpSource         = "applications/services/mqtt/modules/mqtt_http_proxy.c"
+		streamSource       = "applications/services/mqtt/modules/mqtt_streaming.c"
+	)
+	connection, err := readFirmwareFile(root, connectionSource, checked)
+	if err != nil {
+		return err
+	}
+	if err := checkDefine(connectionSource, connection, "MQTT_VERSION", contract.MQTTVersion); err != nil {
+		return err
+	}
+	internal, err := readFirmwareFile(root, internalSource, checked)
+	if err != nil {
+		return err
+	}
+	for name, want := range map[string]string{
+		"MQTT_API_VERSION":        contract.APIVersion,
+		"MQTT_ROOT_TOPIC_SESSION": "sessions",
+		"MQTT_DIRECTION_UP":       contract.UpDirection,
+		"MQTT_DIRECTION_DOWN":     contract.DownDirection,
+	} {
+		if err := checkStringDefine(internalSource, internal, name, want); err != nil {
+			return err
+		}
+	}
+
+	subscription, err := readFirmwareFile(root, subscriptionSource, checked)
+	if err != nil {
+		return err
+	}
+	for _, marker := range []string{
+		`root = MQTT_ROOT_TOPIC_SESSION;`,
+		`furi_string_printf(out, "%s/%s/%s/%s/%s", root, id, dir, MQTT_API_VERSION, topic);`,
+		"MQTT_DIRECTION_DOWN",
+		"MQTT_DIRECTION_UP",
+	} {
+		if !strings.Contains(string(subscription), marker) {
+			return fmt.Errorf("%s is missing %q", subscriptionSource, marker)
+		}
+	}
+	message, err := readFirmwareFile(root, messageSource, checked)
+	if err != nil {
+		return err
+	}
+	responseTopicMarker := `MQTT_ROOT_TOPIC_SESSION "/*/" MQTT_DIRECTION_UP "/" MQTT_API_VERSION "/#"`
+	if !strings.Contains(string(message), responseTopicMarker) {
+		return fmt.Errorf("%s is missing %q", messageSource, responseTopicMarker)
+	}
+
+	httpData, err := readFirmwareFile(root, httpSource, checked)
+	if err != nil {
+		return err
+	}
+	for name, want := range map[string]string{
+		"HTTP_HOST":           contract.HTTP.LocalHost,
+		"HTTP_URI_API_PREFIX": contract.HTTP.PathPrefix,
+		"SUB_TOPIC":           contract.HTTP.RequestTopic,
+	} {
+		if err := checkStringDefine(httpSource, httpData, name, want); err != nil {
+			return err
+		}
+	}
+	for _, marker := range []string{
+		`#define SUB_QOS (MqttQosExactlyOnce)`,
+		`[MqttHttpProxyMethodIdGet] = "GET"`,
+		`[MqttHttpProxyMethodIdPost] = "POST"`,
+		`[MqttHttpProxyMethodIdPut] = "PUT"`,
+		`[MqttHttpProxyMethodIdDelete] = "DELETE"`,
+		"mqtt_http_proxy_request_requires_response",
+		"MqttPropertyTypeResponseTopic",
+		"MqttPropertyTypeCorrelationData",
+		"mqtt_publish_ex",
+		"MqttQosAtLeastOnce",
+		fmt.Sprintf("HTTP/1.1 %d Unprocessable Entity", contract.HTTP.InvalidStatus),
+		"mqtt_http_proxy_is_websocket_upgrade",
+	} {
+		if !strings.Contains(string(httpData), marker) {
+			return fmt.Errorf("%s is missing %q", httpSource, marker)
+		}
+	}
+	if err := checkDefine(httpSource, httpData, "HTTP_CONN_TIMEOUT_MS", contract.HTTP.TimeoutMS); err != nil {
+		return err
+	}
+	wantBlocklist := make([]string, 0, len(contract.HTTP.BlockedOperations))
+	methodIDs := map[string]string{
+		"GET":    "MqttHttpProxyMethodIdGet",
+		"POST":   "MqttHttpProxyMethodIdPost",
+		"PUT":    "MqttHttpProxyMethodIdPut",
+		"DELETE": "MqttHttpProxyMethodIdDelete",
+	}
+	for _, operation := range contract.HTTP.BlockedOperations {
+		parts := strings.SplitN(operation, " ", 2)
+		if len(parts) != 2 || !strings.HasPrefix(parts[1], "/api/") {
+			return fmt.Errorf("invalid remote blocklist receipt entry %q", operation)
+		}
+		wantBlocklist = append(wantBlocklist, strings.TrimPrefix(parts[1], "/api/")+" "+methodIDs[parts[0]])
+	}
+	gotMatches := blocklistPattern.FindAllSubmatch(httpData, -1)
+	gotBlocklist := make([]string, 0, len(gotMatches))
+	for _, match := range gotMatches {
+		gotBlocklist = append(gotBlocklist, string(match[1])+" "+string(match[2]))
+	}
+	if !slices.Equal(gotBlocklist, wantBlocklist) {
+		return fmt.Errorf("%s blocklist = %v, receipt = %v", httpSource, gotBlocklist, wantBlocklist)
+	}
+
+	streamData, err := readFirmwareFile(root, streamSource, checked)
+	if err != nil {
+		return err
+	}
+	if err := checkStringDefine(streamSource, streamData, "SUB_TOPIC", contract.Stream.RequestTopic); err != nil {
+		return err
+	}
+	for _, marker := range []string{
+		`#define SUB_QOS (MqttQosAtLeastOnce)`,
+		`#define PUB_QOS (MqttQosAtMostOnce)`,
+		"MqttPropertyTypeExpiryInterval",
+		"MqttPropertyTypeResponseTopic",
+		`.type = data_size ? MqttStreamingApiMessageTypeStart : MqttStreamingApiMessageTypeStop`,
+		`"message_limits"`,
+		`"` + contract.Stream.MessageLimitMaxCountKey + `"`,
+		`"` + contract.Stream.MessageLimitIntervalSecondsKey + `"`,
+		"state_publisher_handle",
+		"response_topic",
+		"state_publisher_add_transport",
+	} {
+		if !strings.Contains(string(streamData), marker) {
+			return fmt.Errorf("%s is missing %q", streamSource, marker)
+		}
+	}
+	for name, want := range map[string]int{
+		"API_QUEUE_SIZE":            contract.Stream.QueueSize,
+		"FRAME_PERIOD_MS":           contract.Stream.FrameIntervalMS,
+		"EXPIRY_INTERVAL_DEFAULT_S": contract.Stream.DefaultExpirySeconds,
+	} {
+		if err := checkDefine(streamSource, streamData, name, want); err != nil {
+			return err
+		}
+	}
+	if contract.Stream.SnapshotOnStart || strings.Contains(string(streamData), "state_publisher_send_complete_snapshot") {
+		return fmt.Errorf("%s remote stream now requests a complete snapshot", streamSource)
+	}
+	const publisherSource = "applications/services/state_publisher/state_publisher.c"
+	publisherData, err := readFirmwareFile(root, publisherSource, checked)
+	if err != nil {
+		return err
+	}
+	addTransportBody, err := cFunctionBody(publisherSource, publisherData, "state_publisher_add_transport")
+	if err != nil {
+		return err
+	}
+	if strings.Contains(string(addTransportBody), "state_publisher_send_complete_snapshot") {
+		return fmt.Errorf("%s state_publisher_add_transport now requests a complete snapshot", publisherSource)
+	}
+	return nil
+}
+
 func containsJSONKey(data []byte, key string) bool {
 	source := string(data)
 	return strings.Contains(source, `"`+key+`"`) ||
@@ -451,6 +628,40 @@ func checkDefine(sourceFile string, data []byte, name string, want int) error {
 		}
 	}
 	return fmt.Errorf("%s is missing integer define %s", sourceFile, name)
+}
+
+func checkStringDefine(sourceFile string, data []byte, name, want string) error {
+	pattern := regexp.MustCompile(`#define\s+` + regexp.QuoteMeta(name) + `\s+"([^"]*)"`)
+	match := pattern.FindSubmatch(data)
+	if match == nil {
+		return fmt.Errorf("%s is missing string define %s", sourceFile, name)
+	}
+	if string(match[1]) != want {
+		return fmt.Errorf("%s %s = %q, receipt = %q", sourceFile, name, match[1], want)
+	}
+	return nil
+}
+
+func cFunctionBody(sourceFile string, data []byte, symbol string) ([]byte, error) {
+	pattern := regexp.MustCompile(`(?s)\b` + regexp.QuoteMeta(symbol) + `\s*\([^;{]*\)\s*\{`)
+	match := pattern.FindIndex(data)
+	if match == nil {
+		return nil, fmt.Errorf("%s is missing function definition %s", sourceFile, symbol)
+	}
+	open := match[1] - 1
+	depth := 0
+	for index := open; index < len(data); index++ {
+		switch data[index] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return data[open+1 : index], nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("%s function definition %s has no closing brace", sourceFile, symbol)
 }
 
 func gitOutput(root string, args ...string) (string, error) {

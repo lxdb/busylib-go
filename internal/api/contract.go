@@ -31,6 +31,7 @@ type Contract struct {
 	Frames         FrameContract         `json:"frames"`
 	Snapshots      SnapshotContract      `json:"snapshots"`
 	OptionalTools  OptionalToolsContract `json:"optionalTools"`
+	Remote         RemoteContract        `json:"remote"`
 	Operations     []Operation           `json:"operations"`
 }
 
@@ -130,6 +131,46 @@ type AudioConversionContract struct {
 	OutputExtension string `json:"outputExtension"`
 }
 
+type RemoteContract struct {
+	MQTTVersion      int                  `json:"mqttVersion"`
+	APIVersion       string               `json:"apiVersion"`
+	TopicPattern     string               `json:"topicPattern"`
+	DownDirection    string               `json:"downDirection"`
+	UpDirection      string               `json:"upDirection"`
+	HTTP             RemoteHTTPContract   `json:"http"`
+	Stream           RemoteStreamContract `json:"stream"`
+	SourceReferences []SourceReference    `json:"sourceReferences"`
+}
+
+type RemoteHTTPContract struct {
+	RequestTopic            string   `json:"requestTopic"`
+	LocalHost               string   `json:"localHost"`
+	PathPrefix              string   `json:"pathPrefix"`
+	TimeoutMS               int      `json:"timeoutMs"`
+	RequestQoS              int      `json:"requestQos"`
+	ResponseQoS             int      `json:"responseQos"`
+	InvalidStatus           int      `json:"invalidStatus"`
+	RequiresResponseTopic   bool     `json:"requiresResponseTopic"`
+	RequiresCorrelationData bool     `json:"requiresCorrelationData"`
+	EchoesCorrelationData   bool     `json:"echoesCorrelationData"`
+	BlockedOperations       []string `json:"blockedOperations"`
+}
+
+type RemoteStreamContract struct {
+	RequestTopic                   string `json:"requestTopic"`
+	RequestQoS                     int    `json:"requestQos"`
+	ResponseQoS                    int    `json:"responseQos"`
+	DefaultExpirySeconds           int    `json:"defaultExpirySeconds"`
+	FrameIntervalMS                int    `json:"frameIntervalMs"`
+	QueueSize                      int    `json:"queueSize"`
+	EmptyPayloadStops              bool   `json:"emptyPayloadStops"`
+	NonEmptyPayloadStarts          bool   `json:"nonEmptyPayloadStarts"`
+	SnapshotOnStart                bool   `json:"snapshotOnStart"`
+	SinglePublisher                bool   `json:"singlePublisher"`
+	MessageLimitMaxCountKey        string `json:"messageLimitMaxCountKey"`
+	MessageLimitIntervalSecondsKey string `json:"messageLimitIntervalSecondsKey"`
+}
+
 type SourceReference struct {
 	SourceFile   string `json:"sourceFile"`
 	SourceSymbol string `json:"sourceSymbol"`
@@ -183,6 +224,9 @@ func (c Contract) Validate() error {
 		return err
 	}
 	if err := c.OptionalTools.Validate(); err != nil {
+		return err
+	}
+	if err := c.Remote.Validate(); err != nil {
 		return err
 	}
 
@@ -351,6 +395,40 @@ func (c OptionalToolsContract) Validate() error {
 		return err
 	}
 	return c.Media.Validate()
+}
+
+func (c RemoteContract) Validate() error {
+	if c.MQTTVersion != 5 || c.APIVersion != "v1" || c.TopicPattern != "sessions/{session_id}/{direction}/v1/{topic}" ||
+		c.DownDirection != "down" || c.UpDirection != "up" {
+		return fmt.Errorf("remote MQTT routing contract is invalid")
+	}
+	wantBlocked := []string{
+		"POST /api/update",
+		"DELETE /api/account",
+		"POST /api/account/link",
+		"PUT /api/account/backend",
+		"POST /api/wifi/connect",
+		"POST /api/wifi/disconnect",
+		"GET /api/wifi/networks",
+	}
+	if c.HTTP.RequestTopic != "http-request" || c.HTTP.LocalHost != "http://127.0.0.1" ||
+		c.HTTP.PathPrefix != "/api/" || c.HTTP.TimeoutMS != 5_000 || c.HTTP.RequestQoS != 2 ||
+		c.HTTP.ResponseQoS != 1 || c.HTTP.InvalidStatus != 422 || !c.HTTP.RequiresResponseTopic ||
+		!c.HTTP.RequiresCorrelationData || !c.HTTP.EchoesCorrelationData ||
+		!slices.Equal(c.HTTP.BlockedOperations, wantBlocked) {
+		return fmt.Errorf("remote HTTP contract is invalid")
+	}
+	if c.Stream.RequestTopic != "stream-request" || c.Stream.RequestQoS != 1 || c.Stream.ResponseQoS != 0 ||
+		c.Stream.DefaultExpirySeconds != 60 || c.Stream.FrameIntervalMS != 500 || c.Stream.QueueSize != 4 ||
+		!c.Stream.EmptyPayloadStops || !c.Stream.NonEmptyPayloadStarts || c.Stream.SnapshotOnStart ||
+		!c.Stream.SinglePublisher || c.Stream.MessageLimitMaxCountKey != "max_count" ||
+		c.Stream.MessageLimitIntervalSecondsKey != "interval_s" {
+		return fmt.Errorf("remote stream contract is invalid")
+	}
+	if len(c.SourceReferences) != 7 {
+		return fmt.Errorf("remote source reference count = %d, want 7", len(c.SourceReferences))
+	}
+	return validateSourceReferences("remote", c.SourceReferences)
 }
 
 func (c CLIContract) Validate() error {

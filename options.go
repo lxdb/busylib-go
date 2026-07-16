@@ -12,7 +12,6 @@ const DefaultLocalBaseURL = "http://10.0.4.20"
 
 const (
 	headerAPIToken  = "X-API-Token"
-	headerBearer    = "Authorization"
 	headerRequestID = "X-Request-ID"
 	headerSessionID = "x-session-id"
 	headerAPISemVer = "X-API-Sem-Ver"
@@ -23,8 +22,8 @@ const defaultTimeout = 10 * time.Second
 type EndpointMode string
 
 const (
-	EndpointLocal EndpointMode = "local"
-	EndpointProxy EndpointMode = "proxy"
+	EndpointLocal  EndpointMode = "local"
+	EndpointRemote EndpointMode = "remote"
 )
 
 type VersionNegotiation string
@@ -42,17 +41,17 @@ type RetryPolicy struct {
 type Option func(*clientConfig) error
 
 type clientConfig struct {
-	baseURL            string
-	baseURLConfigured  bool
-	httpClient         *http.Client
-	timeout            time.Duration
-	endpointMode       EndpointMode
-	localAccessKey     string
-	cloudBearerToken   string
-	sessionID          string
-	requestIDGenerator func() string
-	retryPolicy        RetryPolicy
-	versionNegotiation VersionNegotiation
+	baseURL              string
+	baseURLConfigured    bool
+	httpClient           *http.Client
+	httpClientConfigured bool
+	timeout              time.Duration
+	endpointMode         EndpointMode
+	localAccessKey       string
+	sessionID            string
+	requestIDGenerator   func() string
+	retryPolicy          RetryPolicy
+	versionNegotiation   VersionNegotiation
 }
 
 func defaultClientConfig() clientConfig {
@@ -86,6 +85,7 @@ func WithHTTPClient(httpClient *http.Client) Option {
 			return errors.New("HTTP client must not be nil")
 		}
 		config.httpClient = httpClient
+		config.httpClientConfigured = true
 		return nil
 	}
 }
@@ -103,11 +103,11 @@ func WithTimeout(timeout time.Duration) Option {
 func WithEndpointMode(mode EndpointMode) Option {
 	return func(config *clientConfig) error {
 		switch mode {
-		case EndpointLocal, EndpointProxy:
+		case EndpointLocal, EndpointRemote:
 			config.endpointMode = mode
 			return nil
 		default:
-			return errors.New("endpoint mode must be local or proxy")
+			return errors.New("endpoint mode must be local or remote")
 		}
 	}
 }
@@ -115,13 +115,6 @@ func WithEndpointMode(mode EndpointMode) Option {
 func WithLocalAccessKey(key string) Option {
 	return func(config *clientConfig) error {
 		config.localAccessKey = key
-		return nil
-	}
-}
-
-func WithCloudBearerToken(token string) Option {
-	return func(config *clientConfig) error {
-		config.cloudBearerToken = token
 		return nil
 	}
 }

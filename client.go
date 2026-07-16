@@ -15,7 +15,6 @@ type Client struct {
 	timeout            time.Duration
 	endpointMode       EndpointMode
 	localAccessKey     string
-	cloudBearerToken   string
 	sessionID          string
 	requestIDGenerator func() string
 	retryPolicy        RetryPolicy
@@ -42,15 +41,15 @@ func NewClient(options ...Option) (*Client, error) {
 		return nil, err
 	}
 
-	if config.endpointMode == EndpointProxy {
+	if config.endpointMode == EndpointRemote {
 		if !config.baseURLConfigured {
-			return nil, errors.New("proxy mode requires an explicit base URL")
+			return nil, errors.New("remote mode requires an explicit base URL")
 		}
-		if baseURL.Scheme != "https" {
-			return nil, validationError("", "", "proxy mode requires an https base URL", nil)
+		if !config.httpClientConfigured {
+			return nil, errors.New("remote mode requires an explicit HTTP client")
 		}
-		if config.cloudBearerToken == "" {
-			return nil, errors.New("proxy mode requires a cloud bearer token")
+		if config.localAccessKey != "" {
+			return nil, errors.New("remote mode does not support a local access key")
 		}
 	}
 
@@ -60,7 +59,6 @@ func NewClient(options ...Option) (*Client, error) {
 		timeout:            config.timeout,
 		endpointMode:       config.endpointMode,
 		localAccessKey:     config.localAccessKey,
-		cloudBearerToken:   config.cloudBearerToken,
 		sessionID:          config.sessionID,
 		requestIDGenerator: config.requestIDGenerator,
 		retryPolicy:        config.retryPolicy,

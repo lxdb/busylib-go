@@ -2,14 +2,15 @@
 
 Go library for BUSY Bar devices.
 
-This repository currently contains the completed Phase 3 through Phase 9 local
+This repository currently contains the completed Phase 3 through Phase 10
 device implementation:
 
 - Go module: `github.com/lxdb/busylib-go`
-- Root `busylib.Client` request execution for direct-device and explicit proxy modes
-- Prepared requests, request IDs, session IDs, local access keys, bearer tokens,
-  API semver negotiation, repeatable body handling, typed errors, and local-only
-  guards
+- Root `busylib.Client` request execution for direct-device and explicit remote
+  transports
+- Prepared requests, request IDs, session IDs, local access keys, API semver
+  negotiation, repeatable body handling, typed errors, and firmware-verified
+  remote-operation guards
 - Product-oriented typed HTTP service accessors for all 67 synchronous
   operations audited from BUSY Bar firmware API `24.4.0`
 - Firmware-aligned request/response models and validation, including Wi-Fi,
@@ -23,6 +24,8 @@ device implementation:
   all 15 typed status-stream updates without owning the stream lifecycle
 - An optional raw USB-network CLI client with fresh and persistent sessions,
   curated firmware command wrappers, bounded responses, and ETX cancellation
+- An optional, dependency-free `remote` package that adapts a caller-supplied
+  MQTT 5 transport to the firmware HTTP and leased status-stream protocols
 - Optional image preparation and audio conversion packages with no added Go
   dependencies; compressed audio uses a caller-configurable `ffmpeg` executable
 - Generated protobuf packages for the BUSY Bar status stream
@@ -121,8 +124,49 @@ The initial control is `{"enable":true,"send":"all"}`. Use
 messages preserve raw bytes and decoded `statepb.State`; text messages pass
 through unchanged. Decode errors remain attached to their message, while only
 terminal failures appear on `Errors()`. `Statuses()` reports lifecycle, access,
-and data freshness. Status streaming is local-only and is rejected in proxy
-mode.
+and data freshness. This WebSocket stream is local-only; use the `remote`
+package for the firmware MQTT stream.
+
+## Remote MQTT
+
+The optional `remote` package accepts a caller-owned MQTT 5 transport. It does
+not select a broker, MQTT library, credentials, or authorization policy:
+
+```go
+remoteClient, err := remote.NewClient(mqttTransport, firmwareSessionID)
+if err != nil {
+	// handle configuration error
+}
+defer remoteClient.Close() // mqttTransport remains caller-owned
+
+device := remoteClient.Device()
+status, err := device.System().Status(ctx)
+
+statusStream, err := remoteClient.NewStatusStream()
+if err == nil {
+	err = statusStream.Start(ctx)
+}
+```
+
+`remote.Transport` consists only of `Publish` and `Subscribe`; adapters map its
+messages and MQTT 5 response-topic, correlation-data, and message-expiry
+properties to the caller's MQTT client. HTTP requests remain canonical
+`/api/...` requests. The firmware blocks these operations remotely, so the Go
+client rejects them before publication:
+
+- `POST /api/update`
+- `DELETE /api/account`
+- `POST /api/account/link`
+- `PUT /api/account/backend`
+- `POST /api/wifi/connect`
+- `POST /api/wifi/disconnect`
+- `GET /api/wifi/networks`
+
+The stream uses a 60-second lease renewed every 30 seconds by default and
+permits one active stream per wrapper. Firmware does not define a remote
+snapshot command: `RequestSnapshot` returns `stream.ErrSnapshotUnsupported`.
+Use `snapshot.Collect(ctx, remoteClient.Device())` for a point-in-time snapshot.
+No local-to-remote fallback is implicit.
 
 ## Frame Decoding
 
@@ -300,20 +344,21 @@ Important request behavior:
 
 - Local-mode bare hosts are normalized to `http://<host>` and stored as an
   origin.
-- Local requests use `/api/...`; proxy mode rewrites `/api/...` to
-  `/busybar/...`.
+- Local and remote requests both retain canonical `/api/...` paths.
 - Local access keys are sent as `X-API-Token`.
-- Proxy bearer tokens are sent as `Authorization: Bearer <token>`.
+- Remote broker authentication is owned by the caller-supplied transport; the
+  root client injects no bearer token or local access key in remote mode.
 - API semver is fetched from `/api/version`, cached, and sent as
   `X-API-Sem-Ver`.
 - A 405 compatibility response refreshes API semver once and retries only when
   the request body is repeatable.
-- Six sensitive direct-device operations are conservatively rejected before
-  network I/O in proxy mode. This is a library privacy policy, not firmware
-  metadata.
-- Proxy mode requires an `https://` base URL because it sends bearer tokens.
-- Caller-provided auth headers are rejected; configure auth through client
-  options instead.
+- The firmware's seven MQTT HTTP blocklist operations are rejected before
+  remote network I/O.
+- Remote mode requires an explicit base URL and HTTP client and never falls
+  back from local mode.
+- Caller-provided `Authorization` and `X-API-Token` headers are rejected;
+  configure local device access with `WithLocalAccessKey` and broker access in
+  the caller's remote transport.
 - Version negotiation can be disabled with `WithVersionNegotiation`.
 
 ## Development
@@ -358,7 +403,7 @@ Other busylib implementations and the historical OpenAPI snapshot are research
 inputs only and cannot override firmware handlers, validation, serialization,
 or constants.
 
-The Phase 3 through Phase 9 implementation audit used
+The Phase 3 through Phase 10 implementation audit used
 `https://github.com/busy-app/busybar-firmware.git` at commit
 `1add7be4f1fd31cbd0763c4c20add1ff6382232e` (branch `dev`, API `24.4.0`).
 Firmware selects protobuf commit

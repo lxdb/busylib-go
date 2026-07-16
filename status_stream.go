@@ -9,7 +9,7 @@ import (
 // address, access key, HTTP transport, timeout, and API-version cache.
 func (c *Client) NewStatusStream(options ...publicstream.Option) (publicstream.Stream, error) {
 	if c.endpointMode != EndpointLocal {
-		return nil, validationError("GET", "/api/status/ws", "status streaming is local-only", nil)
+		return nil, validationError("GET", "/api/status/ws", "local WebSocket status streaming is unavailable in remote mode", nil)
 	}
 	baseURL := *c.baseURL
 	return internalstatusstream.New(internalstatusstream.Config{

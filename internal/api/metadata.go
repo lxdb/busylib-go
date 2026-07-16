@@ -5,10 +5,10 @@ import (
 	"strings"
 )
 
-// localOnlyOperations is a conservative proxy privacy policy. The local
-// firmware contract does not define remote transport availability, so this
-// list is intentionally kept separate from the firmware contract receipt.
-var localOnlyOperations = map[string]struct{}{
+// remoteBlockedOperations mirrors mqtt_http_proxy_blocklist in the canonical
+// firmware. These operations must be rejected before publishing an MQTT request.
+var remoteBlockedOperations = map[string]struct{}{
+	"POST /api/update":          {},
 	"DELETE /api/account":       {},
 	"PUT /api/account/backend":  {},
 	"POST /api/account/link":    {},
@@ -17,14 +17,17 @@ var localOnlyOperations = map[string]struct{}{
 	"GET /api/wifi/networks":    {},
 }
 
-func IsLocalOnlyOperation(method, path string) bool {
-	_, ok := localOnlyOperations[operationID(method, path)]
+func IsRemoteBlockedOperation(method, path string) bool {
+	if path != "/api/" {
+		path = strings.TrimSuffix(path, "/")
+	}
+	_, ok := remoteBlockedOperations[operationID(method, path)]
 	return ok
 }
 
-func LocalOnlyOperations() []string {
-	operations := make([]string, 0, len(localOnlyOperations))
-	for operation := range localOnlyOperations {
+func RemoteBlockedOperations() []string {
+	operations := make([]string, 0, len(remoteBlockedOperations))
+	for operation := range remoteBlockedOperations {
 		operations = append(operations, operation)
 	}
 	sort.Slice(operations, func(i, j int) bool {

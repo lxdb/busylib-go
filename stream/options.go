@@ -25,7 +25,7 @@ type Options struct {
 	Reconnect  ReconnectPolicy
 }
 
-// Option configures a local status stream.
+// Option configures a local or remote status stream.
 type Option func(*Options) error
 
 // DefaultOptions returns the status-stream defaults.

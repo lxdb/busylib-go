@@ -48,8 +48,8 @@ func (c *Client) Prepare(_ context.Context, request Request) (*PreparedRequest, 
 	if err != nil {
 		return nil, validationError(method, request.Path, "", err)
 	}
-	if c.endpointMode == EndpointProxy && internalapi.IsLocalOnlyOperation(method, path) {
-		return nil, validationError(method, path, method+" "+path+" is local-only and cannot be sent in proxy mode", nil)
+	if c.endpointMode == EndpointRemote && internalapi.IsRemoteBlockedOperation(method, path) {
+		return nil, validationError(method, path, method+" "+path+" is blocked by the firmware MQTT remote transport", nil)
 	}
 
 	body := emptyPreparedBody()
@@ -86,9 +86,7 @@ func (c *Client) Prepare(_ context.Context, request Request) (*PreparedRequest, 
 		header.Set(headerSessionID, sessionID)
 	}
 
-	if c.endpointMode == EndpointProxy {
-		header.Set(headerBearer, "Bearer "+c.cloudBearerToken)
-	} else if c.localAccessKey != "" {
+	if c.endpointMode == EndpointLocal && c.localAccessKey != "" {
 		header.Set(headerAPIToken, c.localAccessKey)
 	}
 
@@ -97,7 +95,7 @@ func (c *Client) Prepare(_ context.Context, request Request) (*PreparedRequest, 
 	}
 
 	targetURL := *c.baseURL
-	targetURL.Path = transportPath(c.endpointMode, path)
+	targetURL.Path = path
 	if len(request.Query) > 0 {
 		targetURL.RawQuery = request.Query.Encode()
 	}
@@ -405,8 +403,8 @@ func (c *Client) canRetryCompatibility(execution *executionRequest, statusCode i
 }
 
 func validateCallerAuthHeaders(header http.Header) error {
-	if headerValue(header, headerBearer) != "" {
-		return errors.New("Authorization must be configured with WithCloudBearerToken")
+	if headerValue(header, "Authorization") != "" {
+		return errors.New("Authorization is not supported; transport authentication must be configured outside busylib.Client")
 	}
 	if headerValue(header, headerAPIToken) != "" {
 		return errors.New("X-API-Token must be configured with WithLocalAccessKey")
@@ -432,17 +430,6 @@ func canonicalAPIPath(raw string) (string, error) {
 		return path, nil
 	}
 	return "/api" + path, nil
-}
-
-func transportPath(mode EndpointMode, canonicalPath string) string {
-	if mode == EndpointProxy {
-		suffix := strings.TrimPrefix(canonicalPath, "/api")
-		if suffix == "" {
-			suffix = "/"
-		}
-		return "/busybar" + suffix
-	}
-	return canonicalPath
 }
 
 func cloneHeader(header http.Header) http.Header {

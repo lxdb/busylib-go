@@ -171,6 +171,109 @@ func TestCheckOptionalToolsVerifiesCLIAndMediaFacts(t *testing.T) {
 	}
 }
 
+func TestCheckRemoteMQTTVerifiesCanonicalFactsAndDetectsBlocklistDrift(t *testing.T) {
+	contract, err := internalapi.LoadContractFile("../../testdata/firmware-contract.json")
+	if err != nil {
+		t.Fatalf("load contract: %v", err)
+	}
+	root := t.TempDir()
+	files := map[string]string{
+		"applications/services/mqtt/mqtt_connection.c": `#define MQTT_VERSION (5)`,
+		"applications/services/mqtt/mqtt_i.h": `
+#define MQTT_API_VERSION "v1"
+#define MQTT_ROOT_TOPIC_SESSION "sessions"
+#define MQTT_DIRECTION_UP "up"
+#define MQTT_DIRECTION_DOWN "down"
+`,
+		"applications/services/mqtt/mqtt_subscription.c": `
+mqtt_make_topic_path
+root = MQTT_ROOT_TOPIC_SESSION;
+furi_string_printf(out, "%s/%s/%s/%s/%s", root, id, dir, MQTT_API_VERSION, topic);
+MQTT_DIRECTION_DOWN
+MQTT_DIRECTION_UP
+`,
+		"applications/services/mqtt/mqtt_message.c": `
+mqtt_message_trim_response_topic
+MQTT_ROOT_TOPIC_SESSION "/*/" MQTT_DIRECTION_UP "/" MQTT_API_VERSION "/#"
+`,
+		"applications/services/mqtt/modules/mqtt_http_proxy.c": `
+#define HTTP_HOST "http://127.0.0.1"
+#define HTTP_URI_API_PREFIX "/api/"
+#define HTTP_CONN_TIMEOUT_MS (5000)
+#define SUB_QOS (MqttQosExactlyOnce)
+#define SUB_TOPIC "http-request"
+[MqttHttpProxyMethodIdGet] = "GET"
+[MqttHttpProxyMethodIdPost] = "POST"
+[MqttHttpProxyMethodIdPut] = "PUT"
+[MqttHttpProxyMethodIdDelete] = "DELETE"
+mqtt_http_proxy_blocklist
+{ .name = "update", .id = MqttHttpProxyMethodIdPost }
+{ .name = "account", .id = MqttHttpProxyMethodIdDelete }
+{ .name = "account/link", .id = MqttHttpProxyMethodIdPost }
+{ .name = "account/backend", .id = MqttHttpProxyMethodIdPut }
+{ .name = "wifi/connect", .id = MqttHttpProxyMethodIdPost }
+{ .name = "wifi/disconnect", .id = MqttHttpProxyMethodIdPost }
+{ .name = "wifi/networks", .id = MqttHttpProxyMethodIdGet }
+MqttPropertyTypeResponseTopic
+MqttPropertyTypeCorrelationData
+mqtt_http_proxy_request_requires_response
+mqtt_publish_ex
+MqttQosAtLeastOnce
+HTTP/1.1 422 Unprocessable Entity
+mqtt_http_proxy_is_websocket_upgrade
+`,
+		"applications/services/mqtt/modules/mqtt_streaming.c": `
+#define SUB_QOS (MqttQosAtLeastOnce)
+#define PUB_QOS (MqttQosAtMostOnce)
+#define SUB_TOPIC "stream-request"
+#define API_QUEUE_SIZE (4)
+#define FRAME_PERIOD_MS (500)
+#define EXPIRY_INTERVAL_DEFAULT_S (60)
+mqtt_streaming_message_callback
+MqttPropertyTypeExpiryInterval
+MqttPropertyTypeResponseTopic
+.type = data_size ? MqttStreamingApiMessageTypeStart : MqttStreamingApiMessageTypeStop
+"message_limits"
+"max_count"
+"interval_s"
+state_publisher_handle
+response_topic
+state_publisher_add_transport
+`,
+		"applications/services/state_publisher/state_publisher.c": `
+state_publisher_add_transport(void) {
+    return;
+}
+`,
+	}
+	writeFirmwareFixture(t, root, files)
+
+	if err := checkRemoteMQTT(root, contract.Remote, make(map[string][]byte)); err != nil {
+		t.Fatalf("checkRemoteMQTT: %v", err)
+	}
+
+	httpPath := filepath.Join(root, "applications/services/mqtt/modules/mqtt_http_proxy.c")
+	drifted := strings.Replace(files["applications/services/mqtt/modules/mqtt_http_proxy.c"], `.name = "update", .id = MqttHttpProxyMethodIdPost`, `.name = "update", .id = MqttHttpProxyMethodIdPut`, 1)
+	if err := os.WriteFile(httpPath, []byte(drifted), 0o600); err != nil {
+		t.Fatalf("rewrite remote HTTP fixture: %v", err)
+	}
+	if err := checkRemoteMQTT(root, contract.Remote, make(map[string][]byte)); err == nil {
+		t.Fatal("checkRemoteMQTT accepted a changed firmware blocklist")
+	}
+
+	writeFirmwareFixture(t, root, map[string]string{
+		"applications/services/mqtt/modules/mqtt_http_proxy.c": files["applications/services/mqtt/modules/mqtt_http_proxy.c"],
+		"applications/services/state_publisher/state_publisher.c": `
+state_publisher_add_transport(void) {
+    state_publisher_send_complete_snapshot();
+}
+`,
+	})
+	if err := checkRemoteMQTT(root, contract.Remote, make(map[string][]byte)); err == nil {
+		t.Fatal("checkRemoteMQTT accepted an implicit snapshot added to state_publisher_add_transport")
+	}
+}
+
 func writeFirmwareFixture(t *testing.T, root string, files map[string]string) {
 	t.Helper()
 	for name, contents := range files {

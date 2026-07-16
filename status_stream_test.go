@@ -646,7 +646,7 @@ func TestStatusStreamSlowConsumerFailsWithoutDroppingSilently(t *testing.T) {
 	}
 }
 
-func TestStatusStreamStopIsIdempotentAndProxyIsRejected(t *testing.T) {
+func TestStatusStreamStopIsIdempotentAndRemoteIsRejected(t *testing.T) {
 	hold := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, nil)
@@ -679,18 +679,18 @@ func TestStatusStreamStopIsIdempotentAndProxyIsRejected(t *testing.T) {
 		t.Fatal("Messages channel remained open")
 	}
 
-	proxy, err := NewClient(
-		WithEndpointMode(EndpointProxy),
-		WithBaseURL("https://api.busy.app"),
-		WithCloudBearerToken("token"),
+	remote, err := NewClient(
+		WithEndpointMode(EndpointRemote),
+		WithBaseURL("http://busybar.remote.invalid"),
+		WithHTTPClient(&http.Client{}),
 	)
 	if err != nil {
-		t.Fatalf("proxy NewClient: %v", err)
+		t.Fatalf("remote NewClient: %v", err)
 	}
-	_, err = proxy.NewStatusStream()
+	_, err = remote.NewStatusStream()
 	var validationErr *ValidationError
 	if !errors.As(err, &validationErr) {
-		t.Fatalf("proxy stream error = %T %v", err, err)
+		t.Fatalf("remote stream error = %T %v", err, err)
 	}
 }
 

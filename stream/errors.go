@@ -1,9 +1,18 @@
 package stream
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+// ErrSnapshotUnsupported reports that a transport has no snapshot command.
+// Remote MQTT streams have this behavior; use snapshot.Collect with the
+// remote device client when a point-in-time snapshot is required.
+var ErrSnapshotUnsupported = errors.New("status stream snapshot requests are unsupported by this transport")
 
 // Error is a status-stream transport, lifecycle, or protocol failure. Path is
-// intentionally query-free so access credentials cannot leak through errors.
+// a query-free WebSocket path or an MQTT topic, so credentials cannot leak
+// through errors.
 type Error struct {
 	Operation  string
 	Path       string

@@ -83,13 +83,13 @@ func TestPrepareAppliesLocalAuthRequestIDAndSession(t *testing.T) {
 	}
 }
 
-func TestProxyModeRewritesPathAndSeparatesBearerAuth(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/busybar/status" {
+func TestRemoteModePreservesCanonicalPathAndDoesNotInjectAuth(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/status" {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
-		if got := r.Header.Get("Authorization"); got != "Bearer cloud-token" {
-			t.Fatalf("Authorization = %q", got)
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Fatalf("Authorization = %q, want absent", got)
 		}
 		if got := r.Header.Get("X-API-Token"); got != "" {
 			t.Fatalf("X-API-Token = %q, want absent", got)
@@ -102,9 +102,8 @@ func TestProxyModeRewritesPathAndSeparatesBearerAuth(t *testing.T) {
 	defer server.Close()
 
 	client, err := NewClient(
-		WithEndpointMode(EndpointProxy),
+		WithEndpointMode(EndpointRemote),
 		WithBaseURL(server.URL+"/ignored"),
-		WithCloudBearerToken("cloud-token"),
 		WithHTTPClient(server.Client()),
 		WithRequestIDGenerator(sequenceRequestID("version-rid", "request-rid")),
 	)
@@ -122,27 +121,31 @@ func TestProxyModeRewritesPathAndSeparatesBearerAuth(t *testing.T) {
 	}
 }
 
-func TestProxyModeRequiresHTTPS(t *testing.T) {
-	for _, baseURL := range []string{"https://api.busy.app"} {
-		if _, err := NewClient(
-			WithEndpointMode(EndpointProxy),
-			WithBaseURL(baseURL),
-			WithCloudBearerToken("cloud-token"),
-		); err != nil {
-			t.Fatalf("NewClient with %s: %v", baseURL, err)
-		}
+func TestRemoteModeRequiresExplicitTransportAndRejectsLocalAccessKey(t *testing.T) {
+	httpClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("unused")
+	})}
+	tests := []struct {
+		name    string
+		options []Option
+	}{
+		{"base URL", []Option{WithEndpointMode(EndpointRemote), WithHTTPClient(httpClient)}},
+		{"HTTP client", []Option{WithEndpointMode(EndpointRemote), WithBaseURL("http://busybar.remote.invalid")}},
+		{"local access key", []Option{WithEndpointMode(EndpointRemote), WithBaseURL("http://busybar.remote.invalid"), WithHTTPClient(httpClient), WithLocalAccessKey("1234")}},
 	}
-
-	for _, baseURL := range []string{"http://api.busy.app", "api.busy.app"} {
-		_, err := NewClient(
-			WithEndpointMode(EndpointProxy),
-			WithBaseURL(baseURL),
-			WithCloudBearerToken("cloud-token"),
-		)
-		var validationErr *ValidationError
-		if !errors.As(err, &validationErr) {
-			t.Fatalf("NewClient with %s error = %T %v, want ValidationError", baseURL, err, err)
-		}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := NewClient(test.options...); err == nil {
+				t.Fatal("NewClient succeeded")
+			}
+		})
+	}
+	if _, err := NewClient(
+		WithEndpointMode(EndpointRemote),
+		WithBaseURL("http://busybar.remote.invalid"),
+		WithHTTPClient(httpClient),
+	); err != nil {
+		t.Fatalf("NewClient with explicit remote transport: %v", err)
 	}
 }
 
@@ -166,15 +169,15 @@ func TestPrepareRejectsConflictingAuthHeaders(t *testing.T) {
 		t.Fatalf("local conflicting auth error = %T %v, want ValidationError", err, err)
 	}
 
-	proxy, err := NewClient(
-		WithEndpointMode(EndpointProxy),
-		WithBaseURL("https://api.busy.app"),
-		WithCloudBearerToken("cloud-token"),
+	remote, err := NewClient(
+		WithEndpointMode(EndpointRemote),
+		WithBaseURL("http://busybar.remote.invalid"),
+		WithHTTPClient(&http.Client{}),
 	)
 	if err != nil {
-		t.Fatalf("proxy NewClient: %v", err)
+		t.Fatalf("remote NewClient: %v", err)
 	}
-	_, err = proxy.Prepare(context.Background(), Request{
+	_, err = remote.Prepare(context.Background(), Request{
 		Method: "GET",
 		Path:   "/api/status",
 		Header: http.Header{
@@ -182,7 +185,7 @@ func TestPrepareRejectsConflictingAuthHeaders(t *testing.T) {
 		},
 	})
 	if !errors.As(err, &validationErr) {
-		t.Fatalf("proxy conflicting auth error = %T %v, want ValidationError", err, err)
+		t.Fatalf("remote conflicting auth error = %T %v, want ValidationError", err, err)
 	}
 }
 
@@ -635,13 +638,12 @@ func TestProgressBodyReportsKnownAndUnknownTotals(t *testing.T) {
 	})
 }
 
-func TestProxyLocalOnlyGuardRejectsBeforeNetwork(t *testing.T) {
+func TestRemoteBlocklistGuardRejectsBeforeNetwork(t *testing.T) {
 	client, err := NewClient(
-		WithEndpointMode(EndpointProxy),
-		WithBaseURL("https://api.busy.app"),
-		WithCloudBearerToken("cloud-token"),
+		WithEndpointMode(EndpointRemote),
+		WithBaseURL("http://busybar.remote.invalid"),
 		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Fatal("network should not be called for local-only proxy operation")
+			t.Fatal("network should not be called for firmware-blocked remote operation")
 			return nil, nil
 		})}),
 	)
@@ -650,8 +652,8 @@ func TestProxyLocalOnlyGuardRejectsBeforeNetwork(t *testing.T) {
 	}
 
 	_, err = client.Prepare(context.Background(), Request{
-		Method: "POST",
-		Path:   "/api/wifi/connect",
+		Method: http.MethodPost,
+		Path:   "/api/update",
 	})
 	var validationErr *ValidationError
 	if !errors.As(err, &validationErr) {

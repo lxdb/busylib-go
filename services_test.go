@@ -1151,13 +1151,12 @@ func TestResponseModelsPreserveUnknownEnumStrings(t *testing.T) {
 	}
 }
 
-func TestLocalOnlyServiceMethodsAreRejectedInProxyMode(t *testing.T) {
+func TestFirmwareBlockedServiceMethodsAreRejectedInRemoteMode(t *testing.T) {
 	client, err := NewClient(
-		WithEndpointMode(EndpointProxy),
-		WithBaseURL("https://api.busy.app"),
-		WithCloudBearerToken("cloud-token"),
+		WithEndpointMode(EndpointRemote),
+		WithBaseURL("http://busybar.remote.invalid"),
 		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Fatal("network should not be called for local-only operation")
+			t.Fatal("network should not be called for firmware-blocked remote operation")
 			return nil, nil
 		})}),
 	)
@@ -1170,6 +1169,9 @@ func TestLocalOnlyServiceMethodsAreRejectedInProxyMode(t *testing.T) {
 		name string
 		call func() error
 	}{
+		{"firmware upload", func() error {
+			return client.Update().UploadPackage(ctx, BytesBody([]byte("firmware"), "application/octet-stream"))
+		}},
 		{"account unlink", func() error { return client.Account().Unlink(ctx) }},
 		{"account set backend", func() error {
 			return client.Account().SetBackend(ctx, AccountBackend{ServerURL: "default", ClientCertType: AccountClientCertDefault})

@@ -14,7 +14,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// Stream is a one-shot local BUSY Bar status-stream subscription.
+// Stream is a one-shot BUSY Bar status-stream subscription. Local WebSocket
+// and remote MQTT implementations share this lifecycle contract.
 type Stream interface {
 	Start(context.Context) error
 	Stop() error
@@ -32,8 +33,9 @@ const (
 	MessageText   MessageKind = "text"
 )
 
-// Message preserves one WebSocket message together with its decoded state and
-// ordered product updates. Raw is retained for protocol diagnostics.
+// Message preserves one transport message together with its decoded state and
+// ordered product updates. Raw is retained for protocol diagnostics. Text is
+// used by the local WebSocket transport; remote MQTT messages are binary.
 type Message struct {
 	Kind        MessageKind
 	ReceivedAt  time.Time
@@ -72,7 +74,7 @@ const (
 	DataStale   DataStatus = "stale"
 )
 
-// Status is the current local stream lifecycle snapshot. Statuses may coalesce
+// Status is the current stream lifecycle snapshot. Statuses may coalesce
 // intermediate values; Status always returns the latest value.
 type Status struct {
 	Lifecycle   Lifecycle

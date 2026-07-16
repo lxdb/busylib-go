@@ -189,3 +189,43 @@ func TestFirmwareContractOptionalToolsMatchPhaseNineSurface(t *testing.T) {
 		t.Fatalf("audio conversion receipt = %#v", media.Audio)
 	}
 }
+
+func TestFirmwareContractRemoteMQTTMatchesPhaseTenSurface(t *testing.T) {
+	contract, err := LoadContractFile("testdata/firmware-contract.json")
+	if err != nil {
+		t.Fatalf("load firmware contract: %v", err)
+	}
+
+	remote := contract.Remote
+	if remote.MQTTVersion != 5 || remote.APIVersion != "v1" || remote.TopicPattern != "sessions/{session_id}/{direction}/v1/{topic}" {
+		t.Fatalf("remote MQTT routing receipt = %#v", remote)
+	}
+	if remote.DownDirection != "down" || remote.UpDirection != "up" {
+		t.Fatalf("remote MQTT directions = %q/%q", remote.DownDirection, remote.UpDirection)
+	}
+
+	wantBlocked := []string{
+		"POST /api/update",
+		"DELETE /api/account",
+		"POST /api/account/link",
+		"PUT /api/account/backend",
+		"POST /api/wifi/connect",
+		"POST /api/wifi/disconnect",
+		"GET /api/wifi/networks",
+	}
+	if remote.HTTP.RequestTopic != "http-request" || remote.HTTP.LocalHost != "http://127.0.0.1" ||
+		remote.HTTP.PathPrefix != "/api/" || remote.HTTP.TimeoutMS != 5_000 ||
+		remote.HTTP.RequestQoS != 2 || remote.HTTP.ResponseQoS != 1 || remote.HTTP.InvalidStatus != 422 ||
+		!remote.HTTP.RequiresResponseTopic || !remote.HTTP.RequiresCorrelationData || !remote.HTTP.EchoesCorrelationData ||
+		!reflect.DeepEqual(remote.HTTP.BlockedOperations, wantBlocked) {
+		t.Fatalf("remote HTTP receipt = %#v", remote.HTTP)
+	}
+
+	if remote.Stream.RequestTopic != "stream-request" || remote.Stream.RequestQoS != 1 || remote.Stream.ResponseQoS != 0 ||
+		remote.Stream.DefaultExpirySeconds != 60 || remote.Stream.FrameIntervalMS != 500 || remote.Stream.QueueSize != 4 ||
+		!remote.Stream.EmptyPayloadStops || !remote.Stream.NonEmptyPayloadStarts || remote.Stream.SnapshotOnStart ||
+		!remote.Stream.SinglePublisher || remote.Stream.MessageLimitMaxCountKey != "max_count" ||
+		remote.Stream.MessageLimitIntervalSecondsKey != "interval_s" {
+		t.Fatalf("remote stream receipt = %#v", remote.Stream)
+	}
+}
