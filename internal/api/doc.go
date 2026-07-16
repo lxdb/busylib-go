@@ -1,2 +1,2 @@
-// Package api contains contract inventory checks for the BUSY Bar HTTP API.
+// Package api owns the independently recorded BUSY Bar firmware HTTP contract.
 package api

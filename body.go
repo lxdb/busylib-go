@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"sync"
 )
 
 type Body interface {
 	prepareBody() (*preparedBody, error)
 }
+
+type ProgressFunc func(written, total int64)
 
 type preparedBody struct {
 	contentType   string
@@ -53,6 +56,23 @@ func RepeatableBody(contentType string, contentLength int64, open func() (io.Rea
 		contentType:   contentType,
 		contentLength: contentLength,
 		open:          open,
+	}
+}
+
+// FileBody sends a local file as a repeatable request body.
+func FileBody(path, contentType string) Body {
+	return fileBody{
+		path:        path,
+		contentType: contentType,
+	}
+}
+
+// ProgressBody reports upload progress while preserving the wrapped body's
+// repeatability and content length.
+func ProgressBody(body Body, onProgress ProgressFunc) Body {
+	return progressBody{
+		body:       body,
+		onProgress: onProgress,
 	}
 }
 
@@ -135,6 +155,86 @@ func (b repeatableBody) prepareBody() (*preparedBody, error) {
 		repeatable:    true,
 		open:          b.open,
 	}, nil
+}
+
+type fileBody struct {
+	path        string
+	contentType string
+}
+
+func (b fileBody) prepareBody() (*preparedBody, error) {
+	if b.path == "" {
+		return nil, errors.New("file body path must not be empty")
+	}
+	info, err := os.Stat(b.path)
+	if err != nil {
+		return nil, err
+	}
+	if info.IsDir() {
+		return nil, errors.New("file body path must be a file")
+	}
+	return &preparedBody{
+		contentType:   b.contentType,
+		contentLength: info.Size(),
+		repeatable:    true,
+		open: func() (io.ReadCloser, error) {
+			return os.Open(b.path)
+		},
+	}, nil
+}
+
+type progressBody struct {
+	body       Body
+	onProgress ProgressFunc
+}
+
+func (b progressBody) prepareBody() (*preparedBody, error) {
+	if b.body == nil {
+		return nil, errors.New("progress body must wrap a body")
+	}
+	prepared, err := b.body.prepareBody()
+	if err != nil {
+		return nil, err
+	}
+	if b.onProgress == nil {
+		return prepared, nil
+	}
+	return &preparedBody{
+		contentType:   prepared.contentType,
+		contentLength: prepared.contentLength,
+		repeatable:    prepared.repeatable,
+		open: func() (io.ReadCloser, error) {
+			reader, err := prepared.open()
+			if err != nil || reader == nil {
+				return reader, err
+			}
+			return &progressReadCloser{
+				reader:     reader,
+				total:      prepared.contentLength,
+				onProgress: b.onProgress,
+			}, nil
+		},
+	}, nil
+}
+
+type progressReadCloser struct {
+	reader     io.ReadCloser
+	written    int64
+	total      int64
+	onProgress ProgressFunc
+}
+
+func (r *progressReadCloser) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if n > 0 {
+		r.written += int64(n)
+		r.onProgress(r.written, r.total)
+	}
+	return n, err
+}
+
+func (r *progressReadCloser) Close() error {
+	return r.reader.Close()
 }
 
 func emptyPreparedBody() *preparedBody {

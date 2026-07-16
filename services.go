@@ -2,6 +2,8 @@ package busylib
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -121,6 +123,11 @@ func (s SystemService) Transport(ctx context.Context) (NetworkInterfaceInfo, err
 }
 
 func (s SystemService) DumpLog(ctx context.Context, path string) error {
+	if path != "" {
+		if err := validateStoragePath("path", path); err != nil {
+			return validationError(http.MethodPost, "/api/log_dump", err.Error(), err)
+		}
+	}
 	query := url.Values{}
 	if path != "" {
 		query.Set("path", path)
@@ -135,6 +142,9 @@ func (s SettingsService) HTTPAccess(ctx context.Context) (HttpAccessInfo, error)
 }
 
 func (s SettingsService) SetHTTPAccess(ctx context.Context, mode HTTPAccessMode, key string) error {
+	if err := validateHTTPAccess(mode, key); err != nil {
+		return validationError(http.MethodPost, "/api/access", err.Error(), err)
+	}
 	query := url.Values{"mode": []string{string(mode)}}
 	if key != "" {
 		query.Set("key", key)
@@ -149,6 +159,9 @@ func (s SettingsService) Name(ctx context.Context) (NameInfo, error) {
 }
 
 func (s SettingsService) SetName(ctx context.Context, name string) error {
+	if err := validateDeviceName(name); err != nil {
+		return validationError(http.MethodPost, "/api/name", err.Error(), err)
+	}
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/name", nil, JSONBody(NameInfo{Name: name}))
 }
 
@@ -159,14 +172,25 @@ func (s DisplayService) Brightness(ctx context.Context) (DisplayBrightnessInfo, 
 }
 
 func (s DisplayService) SetBrightness(ctx context.Context, value string) error {
+	if err := validateBrightness(value); err != nil {
+		return validationError(http.MethodPost, "/api/display/brightness", err.Error(), err)
+	}
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/display/brightness", url.Values{"value": []string{value}}, nil)
 }
 
 func (s DisplayService) Draw(ctx context.Context, request DisplayElements) error {
+	if err := request.Validate(); err != nil {
+		return validationError(http.MethodPost, "/api/display/draw", err.Error(), err)
+	}
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/display/draw", nil, JSONBody(request))
 }
 
 func (s DisplayService) Clear(ctx context.Context, applicationName string) error {
+	if applicationName != "" {
+		if err := validateDisplayApplicationName(applicationName); err != nil {
+			return validationError(http.MethodDelete, "/api/display/draw", err.Error(), err)
+		}
+	}
 	query := url.Values{}
 	if applicationName != "" {
 		query.Set("application_name", applicationName)
@@ -175,11 +199,25 @@ func (s DisplayService) Clear(ctx context.Context, applicationName string) error
 }
 
 func (s DisplayService) Screen(ctx context.Context, display int) ([]byte, error) {
+	if err := validateScreenDisplay(display); err != nil {
+		return nil, validationError(http.MethodGet, "/api/screen", err.Error(), err)
+	}
 	return s.client.doBytes(ctx, http.MethodGet, "/api/screen", url.Values{"display": []string{strconv.Itoa(display)}}, nil)
 }
 
 func (s AudioService) Play(ctx context.Context, request PlayAudio) error {
+	if err := request.Validate(); err != nil {
+		return validationError(http.MethodPost, "/api/audio/play", err.Error(), err)
+	}
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/audio/play", nil, JSONBody(request))
+}
+
+func (s AudioService) PlayAsset(ctx context.Context, applicationName, path string) error {
+	return s.Play(ctx, NewAssetAudio(applicationName, path))
+}
+
+func (s AudioService) PlayStock(ctx context.Context, applicationName, stockPath string) error {
+	return s.Play(ctx, NewStockAudio(applicationName, stockPath))
 }
 
 func (s AudioService) Stop(ctx context.Context) error {
@@ -193,6 +231,9 @@ func (s AudioService) Volume(ctx context.Context) (AudioVolumeInfo, error) {
 }
 
 func (s AudioService) SetVolume(ctx context.Context, request SetAudioVolumeRequest) error {
+	if err := validateVolume(request.Volume); err != nil {
+		return validationError(http.MethodPost, "/api/audio/volume", err.Error(), err)
+	}
 	query := url.Values{"volume": []string{strconv.FormatFloat(request.Volume, 'f', -1, 64)}}
 	if request.Silent {
 		query.Set("silent", "1")
@@ -200,9 +241,13 @@ func (s AudioService) SetVolume(ctx context.Context, request SetAudioVolumeReque
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/audio/volume", query, nil)
 }
 
+func (s AudioService) SetVolumeSilently(ctx context.Context, volume float64) error {
+	return s.SetVolume(ctx, SetAudioVolumeRequest{Volume: volume, Silent: true})
+}
+
 func (s AssetsService) Upload(ctx context.Context, request UploadAssetRequest) error {
-	if request.Body == nil {
-		return validationError(http.MethodPost, "/api/assets/upload", "asset upload body must not be nil", nil)
+	if err := request.Validate(); err != nil {
+		return validationError(http.MethodPost, "/api/assets/upload", err.Error(), err)
 	}
 	query := url.Values{
 		"application_name": []string{request.ApplicationName},
@@ -211,36 +256,92 @@ func (s AssetsService) Upload(ctx context.Context, request UploadAssetRequest) e
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/assets/upload", query, request.Body)
 }
 
+func (s AssetsService) UploadFile(ctx context.Context, applicationName, file, localPath string) error {
+	return s.Upload(ctx, UploadAssetRequest{
+		ApplicationName: applicationName,
+		File:            file,
+		Body:            FileBody(localPath, "application/octet-stream"),
+	})
+}
+
 func (s AssetsService) DeleteApplicationAssets(ctx context.Context, applicationName string) error {
+	if err := validateAssetParameter("application_name", applicationName); err != nil {
+		return validationError(http.MethodDelete, "/api/assets/upload", err.Error(), err)
+	}
+	if !firmwarePathIsSane("/ext/user_assets/" + applicationName) {
+		err := errors.New("application_name produces an unsafe firmware path")
+		return validationError(http.MethodDelete, "/api/assets/upload", err.Error(), err)
+	}
 	return s.client.doSuccess(ctx, http.MethodDelete, "/api/assets/upload", url.Values{"application_name": []string{applicationName}}, nil)
 }
 
 func (s StorageService) Write(ctx context.Context, request WriteStorageFileRequest) error {
-	if request.Body == nil {
-		return validationError(http.MethodPost, "/api/storage/write", "storage write body must not be nil", nil)
+	if err := request.Validate(); err != nil {
+		return validationError(http.MethodPost, "/api/storage/write", err.Error(), err)
 	}
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/storage/write", url.Values{"path": []string{request.Path}}, request.Body)
 }
 
+func (s StorageService) WriteFile(ctx context.Context, path, localPath string) error {
+	return s.Write(ctx, WriteStorageFileRequest{
+		Path: path,
+		Body: FileBody(localPath, "application/octet-stream"),
+	})
+}
+
 func (s StorageService) Read(ctx context.Context, path string) ([]byte, error) {
+	if err := validateStoragePath("path", path); err != nil {
+		return nil, validationError(http.MethodGet, "/api/storage/read", err.Error(), err)
+	}
 	return s.client.doBytes(ctx, http.MethodGet, "/api/storage/read", url.Values{"path": []string{path}}, nil)
+}
+
+func (s StorageService) ReadTo(ctx context.Context, path string, writer io.Writer) (int64, error) {
+	if err := validateStoragePath("path", path); err != nil {
+		return 0, validationError(http.MethodGet, "/api/storage/read", err.Error(), err)
+	}
+	if writer == nil {
+		return 0, validationError(http.MethodGet, "/api/storage/read", "writer must not be nil", nil)
+	}
+	_, n, err := s.client.doStreamTo(ctx, Request{
+		Method:       http.MethodGet,
+		Path:         "/api/storage/read",
+		Query:        url.Values{"path": []string{path}},
+		ResponseMode: ResponseModeBytes,
+	}, writer)
+	return n, err
 }
 
 func (s StorageService) List(ctx context.Context, path string) (StorageList, error) {
 	var out StorageList
+	if err := validateStoragePath("path", path); err != nil {
+		return out, validationError(http.MethodGet, "/api/storage/list", err.Error(), err)
+	}
 	err := s.client.doJSON(ctx, http.MethodGet, "/api/storage/list", url.Values{"path": []string{path}}, nil, &out)
 	return out, err
 }
 
 func (s StorageService) Remove(ctx context.Context, path string) error {
+	if err := validateStoragePath("path", path); err != nil {
+		return validationError(http.MethodDelete, "/api/storage/remove", err.Error(), err)
+	}
 	return s.client.doSuccess(ctx, http.MethodDelete, "/api/storage/remove", url.Values{"path": []string{path}}, nil)
 }
 
 func (s StorageService) Mkdir(ctx context.Context, path string) error {
+	if err := validateStoragePath("path", path); err != nil {
+		return validationError(http.MethodPost, "/api/storage/mkdir", err.Error(), err)
+	}
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/storage/mkdir", url.Values{"path": []string{path}}, nil)
 }
 
 func (s StorageService) Rename(ctx context.Context, path, newPath string) error {
+	if err := validateStoragePath("path", path); err != nil {
+		return validationError(http.MethodPost, "/api/storage/rename", err.Error(), err)
+	}
+	if err := validateStoragePath("new_path", newPath); err != nil {
+		return validationError(http.MethodPost, "/api/storage/rename", err.Error(), err)
+	}
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/storage/rename", url.Values{"path": []string{path}, "new_path": []string{newPath}}, nil)
 }
 
@@ -257,16 +358,28 @@ func (s BusyService) Snapshot(ctx context.Context) (BusySnapshot, error) {
 }
 
 func (s BusyService) SetSnapshot(ctx context.Context, snapshot BusySnapshot) error {
+	if err := snapshot.Validate(); err != nil {
+		return validationError(http.MethodPut, "/api/busy/snapshot", err.Error(), err)
+	}
 	return s.client.doSuccess(ctx, http.MethodPut, "/api/busy/snapshot", nil, JSONBody(snapshot))
 }
 
 func (s BusyService) Profile(ctx context.Context, slot BusyProfileSlot) (BusyProfile, error) {
 	var out BusyProfile
+	if err := validateBusyProfileSlot(slot); err != nil {
+		return out, validationError(http.MethodGet, "/api/busy/profiles/{slot}", err.Error(), err)
+	}
 	err := s.client.doJSON(ctx, http.MethodGet, "/api/busy/profiles/"+url.PathEscape(string(slot)), nil, nil, &out)
 	return out, err
 }
 
 func (s BusyService) SetProfile(ctx context.Context, slot BusyProfileSlot, profile BusyProfile) error {
+	if err := validateBusyProfileSlot(slot); err != nil {
+		return validationError(http.MethodPut, "/api/busy/profiles/{slot}", err.Error(), err)
+	}
+	if err := profile.Validate(); err != nil {
+		return validationError(http.MethodPut, "/api/busy/profiles/{slot}", err.Error(), err)
+	}
 	return s.client.doSuccess(ctx, http.MethodPut, "/api/busy/profiles/"+url.PathEscape(string(slot)), nil, JSONBody(profile))
 }
 
@@ -295,6 +408,9 @@ func (s AccountService) Backend(ctx context.Context) (AccountBackend, error) {
 }
 
 func (s AccountService) SetBackend(ctx context.Context, backend AccountBackend) error {
+	if err := backend.Validate(); err != nil {
+		return validationError(http.MethodPut, "/api/account/backend", err.Error(), err)
+	}
 	return s.client.doSuccess(ctx, http.MethodPut, "/api/account/backend", nil, JSONBody(backend))
 }
 
@@ -333,6 +449,9 @@ func (s WiFiService) Networks(ctx context.Context) (NetworkResponse, error) {
 }
 
 func (s WiFiService) Connect(ctx context.Context, request ConnectRequestConfig) error {
+	if err := request.Validate(); err != nil {
+		return validationError(http.MethodPost, "/api/wifi/connect", err.Error(), err)
+	}
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/wifi/connect", nil, JSONBody(request))
 }
 
@@ -341,6 +460,9 @@ func (s WiFiService) Disconnect(ctx context.Context) error {
 }
 
 func (s InputService) SendKey(ctx context.Context, key InputKey) error {
+	if err := validateInputKey(key); err != nil {
+		return validationError(http.MethodPost, "/api/input", err.Error(), err)
+	}
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/input", url.Values{"key": []string{string(key)}}, nil)
 }
 
@@ -366,8 +488,11 @@ func (s SmartHomeService) SwitchState(ctx context.Context) (SmartHomeSwitchState
 	return out, err
 }
 
-func (s SmartHomeService) SetSwitchState(ctx context.Context, state SmartHomeSwitchState) error {
-	return s.client.doSuccess(ctx, http.MethodPost, "/api/smart_home/switch", nil, JSONBody(state))
+func (s SmartHomeService) SetSwitchState(ctx context.Context, update SmartHomeSwitchUpdate) error {
+	if err := update.Validate(); err != nil {
+		return validationError(http.MethodPost, "/api/smart_home/switch", err.Error(), err)
+	}
+	return s.client.doSuccess(ctx, http.MethodPost, "/api/smart_home/switch", nil, JSONBody(update))
 }
 
 func (s TimeService) Now(ctx context.Context) (TimestampInfo, error) {
@@ -377,6 +502,9 @@ func (s TimeService) Now(ctx context.Context) (TimestampInfo, error) {
 }
 
 func (s TimeService) SetTimestamp(ctx context.Context, timestamp string) error {
+	if err := validateTimestamp(timestamp); err != nil {
+		return validationError(http.MethodPost, "/api/time/timestamp", err.Error(), err)
+	}
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/time/timestamp", url.Values{"timestamp": []string{timestamp}}, nil)
 }
 
@@ -387,6 +515,9 @@ func (s TimeService) Timezone(ctx context.Context) (TimezoneInfo, error) {
 }
 
 func (s TimeService) SetTimezone(ctx context.Context, timezone string) error {
+	if err := validateTimezone(timezone); err != nil {
+		return validationError(http.MethodPost, "/api/time/timezone", err.Error(), err)
+	}
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/time/timezone", url.Values{"timezone": []string{timezone}}, nil)
 }
 
@@ -415,11 +546,17 @@ func (s UpdateService) Status(ctx context.Context) (UpdateStatus, error) {
 
 func (s UpdateService) Changelog(ctx context.Context, version string) (UpdateChangelog, error) {
 	var out UpdateChangelog
+	if err := validateUpdateVersion(version); err != nil {
+		return out, validationError(http.MethodGet, "/api/update/changelog", err.Error(), err)
+	}
 	err := s.client.doJSON(ctx, http.MethodGet, "/api/update/changelog", url.Values{"version": []string{version}}, nil, &out)
 	return out, err
 }
 
 func (s UpdateService) Install(ctx context.Context, version string) error {
+	if err := validateUpdateVersion(version); err != nil {
+		return validationError(http.MethodPost, "/api/update/install", err.Error(), err)
+	}
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/update/install", url.Values{"version": []string{version}}, nil)
 }
 
@@ -434,6 +571,9 @@ func (s UpdateService) Autoupdate(ctx context.Context) (AutoupdateSettings, erro
 }
 
 func (s UpdateService) SetAutoupdate(ctx context.Context, settings AutoupdateSettings) error {
+	if err := settings.Validate(); err != nil {
+		return validationError(http.MethodPost, "/api/update/autoupdate", err.Error(), err)
+	}
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/update/autoupdate", nil, JSONBody(settings))
 }
 

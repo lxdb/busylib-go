@@ -4,28 +4,33 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	internalapi "github.com/lxdb/busylib-go/internal/api"
 )
 
-func TestHTTPServiceOperationCoverageMatchesOpenAPIInventory(t *testing.T) {
-	inventory, err := internalapi.BuildInventoryFile("internal/api/testdata/busybar-f21-openapi-1.0.0-rc.yaml")
+func TestHTTPServiceOperationCoverageMatchesFirmwareContract(t *testing.T) {
+	contract, err := internalapi.LoadContractFile("internal/api/testdata/firmware-contract.json")
 	if err != nil {
-		t.Fatalf("read openapi inventory: %v", err)
+		t.Fatalf("read firmware contract: %v", err)
 	}
 
 	covered := map[string]string{
-		"GET /api/status/ws": "stream phase deferral",
+		"GET /api/status/ws": "phase 6 local status stream",
 	}
 	for _, tc := range serviceRequestCases(t) {
 		operationID := tc.operationID()
 		if operationID == "" {
-			t.Fatalf("%s does not declare an OpenAPI operation ID", tc.name)
+			t.Fatalf("%s does not declare a firmware operation ID", tc.name)
 		}
 		if existing, ok := covered[operationID]; ok {
 			t.Fatalf("operation %s is covered by both %s and %s", operationID, existing, tc.name)
@@ -33,23 +38,24 @@ func TestHTTPServiceOperationCoverageMatchesOpenAPIInventory(t *testing.T) {
 		covered[operationID] = tc.name
 	}
 
-	inventoryIDs := make(map[string]struct{}, inventory.OperationCount)
-	for _, operation := range inventory.Operations {
-		inventoryIDs[operation.ID] = struct{}{}
-		if _, ok := covered[operation.ID]; !ok {
-			t.Fatalf("operation %s is not covered by a service method or explicit deferral", operation.ID)
+	contractIDs := make(map[string]struct{}, len(contract.Operations))
+	for _, operation := range contract.Operations {
+		id := operation.ID()
+		contractIDs[id] = struct{}{}
+		if _, ok := covered[id]; !ok {
+			t.Fatalf("operation %s is not covered by a service method or explicit phase owner", id)
 		}
 	}
 	for operationID := range covered {
-		if _, ok := inventoryIDs[operationID]; !ok {
-			t.Fatalf("operation %s is covered but is not in the OpenAPI inventory", operationID)
+		if _, ok := contractIDs[operationID]; !ok {
+			t.Fatalf("operation %s is covered but is not in the firmware contract", operationID)
 		}
 	}
-	if len(covered) != inventory.OperationCount {
-		t.Fatalf("covered operation count = %d, want %d", len(covered), inventory.OperationCount)
+	if len(covered) != len(contract.Operations) {
+		t.Fatalf("covered operation count = %d, want %d", len(covered), len(contract.Operations))
 	}
-	if got := covered["GET /api/status/ws"]; got != "stream phase deferral" {
-		t.Fatalf("GET /api/status/ws coverage = %q, want stream phase deferral", got)
+	if got := covered["GET /api/status/ws"]; got != "phase 6 local status stream" {
+		t.Fatalf("GET /api/status/ws coverage = %q, want phase 6 owner", got)
 	}
 }
 
@@ -64,25 +70,25 @@ func serviceRequestCases(t *testing.T) []serviceRequestCase {
 				if err != nil {
 					return err
 				}
-				if got.APISemVer != "24.3.0" {
+				if got.APISemVer != "24.4.0" {
 					t.Fatalf("APISemVer = %q", got.APISemVer)
 				}
 				return nil
 			},
 			method:   http.MethodGet,
 			path:     "/api/version",
-			response: `{"api_semver":"24.3.0"}`,
+			response: `{"api_semver":"24.4.0"}`,
 		},
 		jsonGetCase("system status", "/api/status", func(ctx context.Context, client *Client) error {
 			got, err := client.System().Status(ctx)
 			if err != nil {
 				return err
 			}
-			if got.System.APISemVer != "24.3.0" {
+			if got.System.APISemVer != "24.4.0" {
 				t.Fatalf("system api_semver = %q", got.System.APISemVer)
 			}
 			return nil
-		}, `{"system":{"api_semver":"24.3.0","uptime":"00d","boot_time":1,"auto_update_enabled":true}}`),
+		}, `{"system":{"api_semver":"24.4.0","uptime":"00d","boot_time":1,"auto_update_enabled":true}}`),
 		jsonGetCase("system device status", "/api/status/device", func(ctx context.Context, client *Client) error {
 			_, err := client.System().DeviceStatus(ctx)
 			return err
@@ -90,11 +96,11 @@ func serviceRequestCases(t *testing.T) []serviceRequestCase {
 		jsonGetCase("system firmware status", "/api/status/firmware", func(ctx context.Context, client *Client) error {
 			_, err := client.System().FirmwareStatus(ctx)
 			return err
-		}, `{"version":"1.0.0","target":22,"branch":"main","build_date":"2026-01-01","commit_hash":"abc"}`),
+		}, `{"version":"1.0.0","target":22,"branch":"main","build_date":"2026-01-01","commit_hash":"abc","intercom_version":"2.0.0"}`),
 		jsonGetCase("system system status", "/api/status/system", func(ctx context.Context, client *Client) error {
 			_, err := client.System().SystemStatus(ctx)
 			return err
-		}, `{"api_semver":"24.3.0","uptime":"00d","boot_time":1,"auto_update_enabled":true}`),
+		}, `{"api_semver":"24.4.0","uptime":"00d","boot_time":1,"auto_update_enabled":true}`),
 		jsonGetCase("system power status", "/api/status/power", func(ctx context.Context, client *Client) error {
 			_, err := client.System().PowerStatus(ctx)
 			return err
@@ -132,9 +138,10 @@ func serviceRequestCases(t *testing.T) []serviceRequestCase {
 		successCase("display set brightness", http.MethodPost, "/api/display/brightness", "value=50", func(ctx context.Context, client *Client) error {
 			return client.Display().SetBrightness(ctx, "50")
 		}, okJSON),
-		successJSONCase("display draw", http.MethodPost, "/api/display/draw", "", `{"application_name":"app","elements":[{"id":"text","type":"text","text":"Hi","font":"normal"}]}`, func(ctx context.Context, client *Client) error {
+		successJSONCase("display draw", http.MethodPost, "/api/display/draw", "", `{"application_name":"app","priority":50,"elements":[{"id":"text","type":"text","text":"Hi","font":"normal"}]}`, func(ctx context.Context, client *Client) error {
 			return client.Display().Draw(ctx, DisplayElements{
 				ApplicationName: "app",
+				Priority:        DefaultDisplayPriority,
 				Elements: []DisplayElement{
 					TextElement{BaseDisplayElement: BaseDisplayElement{ID: "text"}, Text: "Hi", Font: FontNormal},
 				},
@@ -245,7 +252,7 @@ func serviceRequestCases(t *testing.T) []serviceRequestCase {
 		jsonGetCase("wifi status", "/api/wifi/status", func(ctx context.Context, client *Client) error { _, err := client.WiFi().Status(ctx); return err }, `{"state":"connected","ssid":"ssid","security":"WPA3"}`),
 		jsonGetCase("wifi networks", "/api/wifi/networks", func(ctx context.Context, client *Client) error { _, err := client.WiFi().Networks(ctx); return err }, `{"count":1,"networks":[{"ssid":"ssid","security":"WPA3","rssi":-58}]}`),
 		successJSONCase("wifi connect", http.MethodPost, "/api/wifi/connect", "", `{"ssid":"ssid","password":"pass","security":"WPA3","ip_config":{"ip_method":"dhcp"}}`, func(ctx context.Context, client *Client) error {
-			return client.WiFi().Connect(ctx, ConnectRequestConfig{SSID: "ssid", Password: "pass", Security: WiFiSecurityWPA3, IPConfig: &WiFiConnectIPConfig{IPMethod: WiFiIPMethodDHCP}})
+			return client.WiFi().Connect(ctx, ConnectRequestConfig{SSID: "ssid", Password: "pass", Security: WiFiSecurityWPA3, IPConfig: WiFiConnectIPConfig{IPMethod: WiFiIPMethodDHCP}})
 		}, okJSON),
 		successCase("wifi disconnect", http.MethodPost, "/api/wifi/disconnect", "", func(ctx context.Context, client *Client) error { return client.WiFi().Disconnect(ctx) }, okJSON),
 		successCase("input key", http.MethodPost, "/api/input", "key=ok", func(ctx context.Context, client *Client) error { return client.Input().SendKey(ctx, InputKeyOK) }, okJSON),
@@ -263,7 +270,7 @@ func serviceRequestCases(t *testing.T) []serviceRequestCase {
 			return err
 		}, `{"state":false}`),
 		successJSONCase("smart home set switch", http.MethodPost, "/api/smart_home/switch", "", `{"state":false,"startup":"last"}`, func(ctx context.Context, client *Client) error {
-			return client.SmartHome().SetSwitchState(ctx, SmartHomeSwitchState{State: false, Startup: SmartHomeSwitchStartupLast})
+			return client.SmartHome().SetSwitchState(ctx, SmartHomeSwitchUpdate{State: boolPtr(false), Startup: SmartHomeSwitchStartupLast})
 		}, okJSON),
 		jsonGetCase("time now", "/api/time", func(ctx context.Context, client *Client) error { _, err := client.Time().Now(ctx); return err }, `{"timestamp":"2025-10-02T14:30:45+04:00"}`),
 		successCase("time set timestamp", http.MethodPost, "/api/time/timestamp", "timestamp=2025-10-02T14%3A30%3A45Z", func(ctx context.Context, client *Client) error {
@@ -313,7 +320,7 @@ func TestHTTPServicesSendExpectedRequests(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewClient: %v", err)
 			}
-			client.setCachedAPISemVerForTest("24.3.0")
+			client.setCachedAPISemVerForTest("24.4.0")
 
 			if err := tc.call(ctx, client); err != nil {
 				t.Fatalf("service call: %v", err)
@@ -343,8 +350,9 @@ func TestDisplayElementsMarshalPreservesExplicitZeroValues(t *testing.T) {
 
 func TestWiFiConnectConfigDoesNotMarshalStatusOnlyIPType(t *testing.T) {
 	payload := ConnectRequestConfig{
-		SSID: "ssid",
-		IPConfig: &WiFiConnectIPConfig{
+		SSID:     "ssid",
+		Security: WiFiSecurityWPA3,
+		IPConfig: WiFiConnectIPConfig{
 			IPMethod: WiFiIPMethodStatic,
 			Address:  "192.0.2.10",
 			Mask:     "255.255.255.0",
@@ -360,7 +368,570 @@ func TestWiFiConnectConfigDoesNotMarshalStatusOnlyIPType(t *testing.T) {
 		t.Fatalf("connect request included status-only ip_type: %s", data)
 	}
 
-	assertJSONEqual(t, string(data), `{"ssid":"ssid","ip_config":{"ip_method":"static","address":"192.0.2.10","mask":"255.255.255.0","gateway":"192.0.2.1"}}`)
+	assertJSONEqual(t, string(data), `{"ssid":"ssid","password":"","security":"WPA3","ip_config":{"ip_method":"static","address":"192.0.2.10","mask":"255.255.255.0","gateway":"192.0.2.1"}}`)
+}
+
+func TestDisplayHelperConstructorsMarshalAndValidate(t *testing.T) {
+	request := NewDisplayElements("app",
+		NewTextElement("text", "Hi", FontNormal),
+		NewAssetImageElement("image", "logo.png"),
+		NewStockImageElement("stock_image", "shared/logo.png"),
+		NewAssetAnimationElement("animation", "busy.anim"),
+		NewStockAnimationElement("stock_animation", "shared/spin.anim"),
+		NewCountdownElement("countdown", "1700000000", CountdownTimeLeft, CountdownShowHoursWhenNonZero),
+		NewRectangleElement("rectangle", 12, 4),
+	)
+
+	if request.Priority != DefaultDisplayPriority {
+		t.Fatalf("Priority = %d, want default priority", request.Priority)
+	}
+	if err := request.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+
+	body, err := json.Marshal(request)
+	if err != nil {
+		t.Fatalf("MarshalJSON: %v", err)
+	}
+	assertJSONEqual(t, string(body), `{
+		"application_name":"app",
+		"priority":50,
+		"elements":[
+			{"id":"text","display":"front","type":"text","text":"Hi","font":"normal"},
+			{"id":"image","display":"front","type":"image","path":"logo.png"},
+			{"id":"stock_image","display":"front","type":"image","stock_path":"shared/logo.png"},
+			{"id":"animation","display":"front","type":"animation","path":"busy.anim"},
+			{"id":"stock_animation","display":"front","type":"animation","stock_path":"shared/spin.anim"},
+			{"id":"countdown","display":"front","type":"countdown","timestamp":"1700000000","direction":"time_left","show_hours":"when_non_zero"},
+			{"id":"rectangle","display":"front","type":"rectangle","width":12,"height":4}
+		]
+	}`)
+}
+
+func TestFirmwareDisplayTextAcceptsUTF8AndSanitizationIsOptIn(t *testing.T) {
+	raw := " Hello\t\U0001F31F\nBUSY  Bar "
+	if got := SanitizeDisplayText(raw); got != "Hello BUSY Bar" {
+		t.Fatalf("SanitizeDisplayText = %q", got)
+	}
+
+	err := (DisplayElements{
+		ApplicationName: "app",
+		Priority:        DefaultDisplayPriority,
+		Elements: []DisplayElement{
+			NewTextElement("text", raw, FontNormal),
+		},
+	}).Validate()
+	if err != nil {
+		t.Fatalf("raw firmware-valid display text Validate: %v", err)
+	}
+
+	err = (DisplayElements{
+		ApplicationName: "app",
+		Priority:        DefaultDisplayPriority,
+		Elements: []DisplayElement{
+			NewTextElement("text", SanitizeDisplayText(raw), FontNormal),
+		},
+	}).Validate()
+	if err != nil {
+		t.Fatalf("sanitized display text Validate: %v", err)
+	}
+}
+
+func TestProductValidatorsAcceptDocumentedBoundaries(t *testing.T) {
+	color, err := NormalizeColor("#aabbccdd")
+	if err != nil {
+		t.Fatalf("NormalizeColor: %v", err)
+	}
+	if color != "#AABBCCDD" {
+		t.Fatalf("NormalizeColor = %q, want uppercase #RRGGBBAA", color)
+	}
+
+	zero := 0
+	request := DisplayElements{
+		ApplicationName:      "app-1",
+		Priority:             100,
+		LEDNotificationColor: "#00AAFFFF",
+		Elements: []DisplayElement{
+			TextElement{
+				BaseDisplayElement: BaseDisplayElement{
+					ID:      "text_1",
+					Timeout: &zero,
+					X:       intPtr(math.MinInt16),
+					Y:       intPtr(math.MaxInt16),
+					Display: DisplayFront,
+					Align:   DisplayAlignCenter,
+				},
+				Text:  "Hello!",
+				Font:  FontGlobal,
+				Color: "#FFFFFFFF",
+				Width: 1,
+			},
+			ImageElement{
+				BaseDisplayElement: BaseDisplayElement{ID: "image.1"},
+				StockPath:          "shared/chime.snd",
+				Opacity:            intPtr(0),
+			},
+			RectangleElement{
+				BaseDisplayElement: BaseDisplayElement{ID: "rect"},
+				Width:              1,
+				Height:             1,
+				Radius:             0,
+				Fill:               RectangleFillGradientH,
+				FillColors:         []string{"#FFFFFFFF", "#00000000"},
+				BorderWidth:        intPtr(0),
+				BorderColor:        "#FFFFFFFF",
+			},
+		},
+	}
+	if err := request.Validate(); err != nil {
+		t.Fatalf("DisplayElements.Validate: %v", err)
+	}
+
+	if err := (PlayAudio{ApplicationName: "app", Path: "tone.snd"}).Validate(); err != nil {
+		t.Fatalf("PlayAudio.Validate: %v", err)
+	}
+	if err := (AutoupdateSettings{IntervalStart: "00:00", IntervalEnd: "23:59"}).Validate(); err != nil {
+		t.Fatalf("AutoupdateSettings.Validate: %v", err)
+	}
+	if err := (AutoupdateSettings{IntervalStart: "8:00", IntervalEnd: "9:30"}).Validate(); err != nil {
+		t.Fatalf("AutoupdateSettings non-padded firmware clock Validate: %v", err)
+	}
+	if err := (ConnectRequestConfig{
+		SSID:     "ssid",
+		Security: WiFiSecurityWPA3,
+		IPConfig: WiFiConnectIPConfig{
+			IPMethod: WiFiIPMethodStatic,
+			Address:  "192.0.2.10",
+			Mask:     "255.255.255.0",
+			Gateway:  "192.0.2.1",
+		},
+	}).Validate(); err != nil {
+		t.Fatalf("ConnectRequestConfig.Validate: %v", err)
+	}
+}
+
+func TestFirmware24_4ValidationShapes(t *testing.T) {
+	if err := validateTimestamp("20260201T114230Z"); err != nil {
+		t.Fatalf("compact firmware timestamp: %v", err)
+	}
+	if err := validateTimezone("~UTC"); err != nil {
+		t.Fatalf("timezone should be left to firmware membership validation: %v", err)
+	}
+
+	if err := (ConnectRequestConfig{
+		SSID:     " ",
+		Security: WiFiSecurityOpen,
+		IPConfig: WiFiConnectIPConfig{IPMethod: WiFiIPMethodDHCP},
+	}).Validate(); err != nil {
+		t.Fatalf("firmware-valid open Wi-Fi request: %v", err)
+	}
+	if err := (ConnectRequestConfig{
+		SSID:     "ssid",
+		Security: WiFiSecurityUnsupported,
+		IPConfig: WiFiConnectIPConfig{IPMethod: WiFiIPMethodDHCP},
+	}).Validate(); err == nil {
+		t.Fatal("Unsupported is response-only and must be rejected for connect")
+	}
+
+	updateBody, err := json.Marshal(SmartHomeSwitchUpdate{Startup: SmartHomeSwitchStartupLast})
+	if err != nil {
+		t.Fatalf("marshal Matter update: %v", err)
+	}
+	assertJSONEqual(t, string(updateBody), `{"startup":"last"}`)
+}
+
+func TestBusyFirmwareValidation(t *testing.T) {
+	paused := false
+	interval := 0
+	total := int64(300_000)
+	left := int64(240_000)
+	snapshot := BusySnapshot{
+		Snapshot: BusySnapshotData{
+			Type:                       BusySnapshotInterval,
+			CardID:                     "00000000-0000-0000-0000-000000000000",
+			IsPaused:                   &paused,
+			CurrentInterval:            &interval,
+			CurrentIntervalTimeTotalMS: &total,
+			CurrentIntervalTimeLeftMS:  &left,
+			IntervalSettings: &BusyTimerIntervalSettings{
+				IntervalWorkMS:          300_000,
+				IntervalRestMS:          300_000,
+				IntervalWorkCyclesCount: 2,
+			},
+			BusyBarSettings: BusyBarSettings{Theme: "busy"},
+		},
+		SnapshotTimestampMS: 1,
+	}
+	if err := snapshot.Validate(); err != nil {
+		t.Fatalf("valid firmware interval snapshot: %v", err)
+	}
+
+	invalid := snapshot
+	tooLong := int64(300_001)
+	invalid.Snapshot.CurrentIntervalTimeLeftMS = &tooLong
+	if err := invalid.Validate(); err == nil {
+		t.Fatal("interval time left greater than total must be rejected")
+	}
+
+	profile := BusyProfile{
+		ID:            "00000000-0000-0000-0000-000000000000",
+		Title:         "Focus",
+		TimerSettings: BusyTimerSettings{Type: BusyTimerInfinite},
+		BusyBarSettings: BusyBarSettings{
+			Theme: "busy",
+		},
+	}
+	if err := profile.Validate(); err != nil {
+		t.Fatalf("valid firmware profile: %v", err)
+	}
+}
+
+func TestDisplayWarningsDoNotBlockContractValidPlacement(t *testing.T) {
+	request := DisplayElements{
+		ApplicationName: "app",
+		Priority:        DefaultDisplayPriority,
+		Elements: []DisplayElement{
+			TextElement{
+				BaseDisplayElement: BaseDisplayElement{
+					ID:      "text",
+					X:       intPtr(200),
+					Y:       intPtr(60),
+					Display: DisplayFront,
+				},
+				Text: "Hi",
+				Font: FontNormal,
+			},
+		},
+	}
+
+	if err := request.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	warnings := request.Warnings()
+	if len(warnings) == 0 {
+		t.Fatal("expected placement warning")
+	}
+	if warnings[0].Field == "" || warnings[0].Message == "" {
+		t.Fatalf("warning should include field and message: %#v", warnings[0])
+	}
+}
+
+func TestDisplayValidationAcceptsPointerElements(t *testing.T) {
+	request := DisplayElements{
+		ApplicationName: "app",
+		Priority:        DefaultDisplayPriority,
+		Elements: []DisplayElement{
+			&TextElement{BaseDisplayElement: BaseDisplayElement{ID: "text"}, Text: "Hi", Font: FontNormal},
+			&ImageElement{BaseDisplayElement: BaseDisplayElement{ID: "image"}, Path: "image.png"},
+			&AnimationElement{BaseDisplayElement: BaseDisplayElement{ID: "animation"}, Path: "animation.gif"},
+			&CountdownElement{BaseDisplayElement: BaseDisplayElement{ID: "countdown"}, Timestamp: "1769437579", Direction: CountdownTimeLeft, ShowHours: CountdownShowHoursAlways},
+			&RectangleElement{BaseDisplayElement: BaseDisplayElement{ID: "rectangle"}, Width: 1, Height: 1},
+		},
+	}
+
+	if err := request.Validate(); err != nil {
+		t.Fatalf("Validate pointer elements: %v", err)
+	}
+}
+
+func TestDisplayWarningsInspectPointerElements(t *testing.T) {
+	request := DisplayElements{
+		ApplicationName: "app",
+		Priority:        DefaultDisplayPriority,
+		Elements: []DisplayElement{
+			&TextElement{
+				BaseDisplayElement: BaseDisplayElement{
+					ID:      "text",
+					X:       intPtr(200),
+					Y:       intPtr(60),
+					Display: DisplayFront,
+				},
+				Text: "Hi",
+				Font: FontNormal,
+			},
+		},
+	}
+
+	if err := request.Validate(); err != nil {
+		t.Fatalf("Validate pointer element: %v", err)
+	}
+	if warnings := request.Warnings(); len(warnings) == 0 {
+		t.Fatal("expected pointer element placement warning")
+	}
+}
+
+func TestDisplayValidationRejectsTypedNilPointerElements(t *testing.T) {
+	var text *TextElement
+	request := DisplayElements{
+		ApplicationName: "app",
+		Priority:        DefaultDisplayPriority,
+		Elements:        []DisplayElement{text},
+	}
+
+	if err := request.Validate(); err == nil {
+		t.Fatal("expected typed nil pointer validation error")
+	}
+}
+
+func TestProductValidatorsRejectInvalidInputs(t *testing.T) {
+	invalid := []struct {
+		name string
+		err  error
+	}{
+		{"color", func() error { _, err := NormalizeColor("#fff"); return err }()},
+		{"draw priority above firmware maximum", (DisplayElements{Priority: 101, Elements: []DisplayElement{TextElement{BaseDisplayElement: BaseDisplayElement{ID: "text"}, Text: "Hi", Font: FontNormal}}}).Validate()},
+		{"draw empty elements", (DisplayElements{ApplicationName: "app", Priority: DefaultDisplayPriority}).Validate()},
+		{"text invalid font", (DisplayElements{ApplicationName: "app", Priority: DefaultDisplayPriority, Elements: []DisplayElement{TextElement{BaseDisplayElement: BaseDisplayElement{ID: "text"}, Text: "Hi", Font: Font("huge")}}}).Validate()},
+		{"image duplicate source", (DisplayElements{ApplicationName: "app", Priority: DefaultDisplayPriority, Elements: []DisplayElement{ImageElement{BaseDisplayElement: BaseDisplayElement{ID: "image"}, Path: "a.png", StockPath: "shared/a.png"}}}).Validate()},
+		{"audio missing source", (PlayAudio{ApplicationName: "app"}).Validate()},
+		{"autoupdate time", (AutoupdateSettings{IntervalStart: "24:00"}).Validate()},
+		{"wifi ssid", (ConnectRequestConfig{}).Validate()},
+		{"wifi static ip", (ConnectRequestConfig{SSID: "ssid", Security: WiFiSecurityWPA3, IPConfig: WiFiConnectIPConfig{IPMethod: WiFiIPMethodStatic, Address: "192.0.2.10"}}).Validate()},
+	}
+	for _, tc := range invalid {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}
+
+func TestAudioHelperMethodsSendDocumentedPayloads(t *testing.T) {
+	ctx := context.Background()
+	calls := []struct {
+		method string
+		path   string
+		query  string
+		body   string
+	}{
+		{method: http.MethodPost, path: "/api/audio/play", body: `{"application_name":"app","path":"tone.snd"}`},
+		{method: http.MethodPost, path: "/api/audio/play", body: `{"application_name":"app","stock_path":"shared/tone.snd"}`},
+		{method: http.MethodPost, path: "/api/audio/volume", query: "silent=1&volume=25"},
+	}
+	var index int
+	client, err := NewClient(
+		WithBaseURL("http://busybar.local"),
+		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if index >= len(calls) {
+				t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+			}
+			want := calls[index]
+			index++
+			if r.Method != want.method || r.URL.Path != want.path || r.URL.RawQuery != want.query {
+				t.Fatalf("request = %s %s?%s, want %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery, want.method, want.path, want.query)
+			}
+			if want.body != "" {
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Fatalf("read body: %v", err)
+				}
+				assertJSONEqual(t, string(body), want.body)
+			}
+			return jsonResponse(http.StatusOK, map[string]string{"result": "OK"}), nil
+		})}),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	client.setCachedAPISemVerForTest("24.4.0")
+
+	if err := client.Audio().PlayAsset(ctx, "app", "tone.snd"); err != nil {
+		t.Fatalf("PlayAsset: %v", err)
+	}
+	if err := client.Audio().PlayStock(ctx, "app", "shared/tone.snd"); err != nil {
+		t.Fatalf("PlayStock: %v", err)
+	}
+	if err := client.Audio().SetVolumeSilently(ctx, 25); err != nil {
+		t.Fatalf("SetVolumeSilently: %v", err)
+	}
+	if index != len(calls) {
+		t.Fatalf("requests = %d, want %d", index, len(calls))
+	}
+}
+
+func TestAssetAndStorageFileHelpersUseRepeatableFileBodies(t *testing.T) {
+	ctx := context.Background()
+	tempDir := t.TempDir()
+	localPath := filepath.Join(tempDir, "payload.bin")
+	if err := os.WriteFile(localPath, []byte("file payload"), 0o600); err != nil {
+		t.Fatalf("WriteFile fixture: %v", err)
+	}
+
+	calls := []struct {
+		method string
+		path   string
+		query  string
+	}{
+		{method: http.MethodPost, path: "/api/assets/upload", query: "application_name=app&file=asset.bin"},
+		{method: http.MethodPost, path: "/api/storage/write", query: "path=%2Fext%2Fpayload.bin"},
+	}
+	var index int
+	client, err := NewClient(
+		WithBaseURL("http://busybar.local"),
+		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if index >= len(calls) {
+				t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+			}
+			want := calls[index]
+			index++
+			if r.Method != want.method || r.URL.Path != want.path || r.URL.RawQuery != want.query {
+				t.Fatalf("request = %s %s?%s, want %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery, want.method, want.path, want.query)
+			}
+			if got := r.Header.Get("Content-Type"); got != "application/octet-stream" {
+				t.Fatalf("Content-Type = %q", got)
+			}
+			if r.ContentLength != int64(len("file payload")) {
+				t.Fatalf("ContentLength = %d", r.ContentLength)
+			}
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("read body: %v", err)
+			}
+			if string(body) != "file payload" {
+				t.Fatalf("body = %q", body)
+			}
+			return jsonResponse(http.StatusOK, map[string]string{"result": "OK"}), nil
+		})}),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	client.setCachedAPISemVerForTest("24.4.0")
+
+	if err := client.Assets().UploadFile(ctx, "app", "asset.bin", localPath); err != nil {
+		t.Fatalf("UploadFile: %v", err)
+	}
+	if err := client.Storage().WriteFile(ctx, "/ext/payload.bin", localPath); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if index != len(calls) {
+		t.Fatalf("requests = %d, want %d", index, len(calls))
+	}
+}
+
+func TestStorageReadToStreamsResponseAndPreservesAPIErrors(t *testing.T) {
+	ctx := context.Background()
+	var calls int
+	client, err := NewClient(
+		WithBaseURL("http://busybar.local"),
+		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			calls++
+			if r.Method != http.MethodGet || r.URL.Path != "/api/storage/read" || r.URL.RawQuery != "path=%2Fext%2Fpayload.bin" {
+				t.Fatalf("request = %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
+			}
+			if calls == 1 {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Status:     http.StatusText(http.StatusOK),
+					Header:     http.Header{},
+					Body:       io.NopCloser(strings.NewReader("streamed payload")),
+				}, nil
+			}
+			return jsonResponse(http.StatusRequestEntityTooLarge, map[string]string{"error": "payload too large"}), nil
+		})}),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	client.setCachedAPISemVerForTest("24.4.0")
+
+	var out bytes.Buffer
+	n, err := client.Storage().ReadTo(ctx, "/ext/payload.bin", &out)
+	if err != nil {
+		t.Fatalf("ReadTo: %v", err)
+	}
+	if n != int64(len("streamed payload")) || out.String() != "streamed payload" {
+		t.Fatalf("ReadTo wrote n=%d body=%q", n, out.String())
+	}
+
+	_, err = client.Storage().ReadTo(ctx, "/ext/payload.bin", io.Discard)
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error = %T %v, want APIError", err, err)
+	}
+	if apiErr.StatusCode != http.StatusRequestEntityTooLarge || apiErr.DeviceError != "payload too large" {
+		t.Fatalf("APIError = status %d error %q", apiErr.StatusCode, apiErr.DeviceError)
+	}
+}
+
+func TestServiceValidationRejectsInvalidInputsBeforeNetwork(t *testing.T) {
+	client, err := NewClient(
+		WithBaseURL("http://busybar.local"),
+		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			t.Fatal("network should not be called for invalid request")
+			return nil, nil
+		})}),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	client.setCachedAPISemVerForTest("24.4.0")
+	ctx := context.Background()
+
+	checks := []struct {
+		name string
+		call func() error
+	}{
+		{"dump log path", func() error { return client.System().DumpLog(ctx, "/tmp/log") }},
+		{"set access key", func() error { return client.Settings().SetHTTPAccess(ctx, HTTPAccessKey, "abc") }},
+		{"set name", func() error { return client.Settings().SetName(ctx, "") }},
+		{"set brightness", func() error { return client.Display().SetBrightness(ctx, "101") }},
+		{"draw", func() error {
+			return client.Display().Draw(ctx, DisplayElements{ApplicationName: "app", Priority: DefaultDisplayPriority})
+		}},
+		{"screen", func() error { _, err := client.Display().Screen(ctx, 2); return err }},
+		{"audio play", func() error {
+			return client.Audio().Play(ctx, PlayAudio{ApplicationName: "app", Path: "a.snd", StockPath: "shared/a.snd"})
+		}},
+		{"set volume", func() error { return client.Audio().SetVolume(ctx, SetAudioVolumeRequest{Volume: 101}) }},
+		{"asset upload", func() error {
+			return client.Assets().Upload(ctx, UploadAssetRequest{ApplicationName: "../bad", File: "data.png", Body: BytesBody([]byte("png"), "application/octet-stream")})
+		}},
+		{"asset delete", func() error { return client.Assets().DeleteApplicationAssets(ctx, "../bad") }},
+		{"storage write", func() error {
+			return client.Storage().Write(ctx, WriteStorageFileRequest{Path: "/tmp/file", Body: BytesBody([]byte("payload"), "application/octet-stream")})
+		}},
+		{"storage read", func() error { _, err := client.Storage().Read(ctx, "/tmp/file"); return err }},
+		{"storage read to path", func() error { _, err := client.Storage().ReadTo(ctx, "/tmp/file", io.Discard); return err }},
+		{"storage read to writer", func() error { _, err := client.Storage().ReadTo(ctx, "/ext/file", nil); return err }},
+		{"storage rename", func() error { return client.Storage().Rename(ctx, "/ext/old", "/tmp/new") }},
+		{"wifi connect", func() error { return client.WiFi().Connect(ctx, ConnectRequestConfig{}) }},
+		{"input key", func() error { return client.Input().SendKey(ctx, InputKey("power")) }},
+		{"smart home switch", func() error {
+			return client.SmartHome().SetSwitchState(ctx, SmartHomeSwitchUpdate{Startup: SmartHomeSwitchStartup("boot")})
+		}},
+		{"time timestamp", func() error { return client.Time().SetTimestamp(ctx, "2025-10-02T14:30:45") }},
+		{"time timezone", func() error { return client.Time().SetTimezone(ctx, "") }},
+		{"update changelog", func() error { _, err := client.Update().Changelog(ctx, ""); return err }},
+		{"update install", func() error { return client.Update().Install(ctx, "") }},
+		{"update autoupdate", func() error { return client.Update().SetAutoupdate(ctx, AutoupdateSettings{IntervalEnd: "24:00"}) }},
+		{"volume nan", func() error { return client.Audio().SetVolume(ctx, SetAudioVolumeRequest{Volume: math.NaN()}) }},
+		{"volume positive infinity", func() error { return client.Audio().SetVolume(ctx, SetAudioVolumeRequest{Volume: math.Inf(1)}) }},
+		{"volume negative infinity", func() error { return client.Audio().SetVolume(ctx, SetAudioVolumeRequest{Volume: math.Inf(-1)}) }},
+	}
+	for _, check := range checks {
+		t.Run(check.name, func(t *testing.T) {
+			err := check.call()
+			var validationErr *ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error = %T %v, want ValidationError", err, err)
+			}
+		})
+	}
+}
+
+func TestResponseModelsPreserveUnknownEnumStrings(t *testing.T) {
+	var status WiFiStatus
+	if err := json.Unmarshal([]byte(`{"state":"roaming","security":"WPA4"}`), &status); err != nil {
+		t.Fatalf("unmarshal wifi status: %v", err)
+	}
+	if status.State != WiFiConnectionState("roaming") {
+		t.Fatalf("state = %q", status.State)
+	}
+	if status.Security != WiFiSecurityMethod("WPA4") {
+		t.Fatalf("security = %q", status.Security)
+	}
 }
 
 func TestLocalOnlyServiceMethodsAreRejectedInProxyMode(t *testing.T) {
@@ -400,6 +971,14 @@ func TestLocalOnlyServiceMethodsAreRejectedInProxyMode(t *testing.T) {
 	}
 }
 
+func intPtr(value int) *int {
+	return &value
+}
+
+func boolPtr(value bool) *bool {
+	return &value
+}
+
 type serviceRequestCase struct {
 	name                string
 	call                func(context.Context, *Client) error
@@ -411,7 +990,7 @@ type serviceRequestCase struct {
 	expectedContentType string
 	response            string
 	responseContentType string
-	openAPIOperationID  string
+	contractOperationID string
 }
 
 func (tc serviceRequestCase) withBody(body, contentType string) serviceRequestCase {
@@ -421,13 +1000,13 @@ func (tc serviceRequestCase) withBody(body, contentType string) serviceRequestCa
 }
 
 func (tc serviceRequestCase) withOperationID(operationID string) serviceRequestCase {
-	tc.openAPIOperationID = operationID
+	tc.contractOperationID = operationID
 	return tc
 }
 
 func (tc serviceRequestCase) operationID() string {
-	if tc.openAPIOperationID != "" {
-		return tc.openAPIOperationID
+	if tc.contractOperationID != "" {
+		return tc.contractOperationID
 	}
 	return tc.method + " " + tc.path
 }
@@ -463,8 +1042,8 @@ func assertServiceRequest(t *testing.T, tc serviceRequestCase, r *http.Request) 
 	if r.URL.RawQuery != tc.query {
 		t.Fatalf("query = %q, want %q", r.URL.RawQuery, tc.query)
 	}
-	if got := r.Header.Get("X-API-Sem-Ver"); got != "24.3.0" && tc.path != "/api/version" {
-		t.Fatalf("X-API-Sem-Ver = %q, want 24.3.0", got)
+	if got := r.Header.Get("X-API-Sem-Ver"); got != "24.4.0" && tc.path != "/api/version" {
+		t.Fatalf("X-API-Sem-Ver = %q, want 24.4.0", got)
 	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {

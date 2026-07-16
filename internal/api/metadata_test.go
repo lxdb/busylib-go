@@ -5,18 +5,17 @@ import (
 	"testing"
 )
 
-func TestLocalOnlyOperationsMatchOpenAPIInventory(t *testing.T) {
-	inventory := readOpenAPI(t)
-
-	var fromInventory []string
-	for _, operation := range inventory.Operations {
-		if operation.LocalOnly {
-			fromInventory = append(fromInventory, operation.ID)
-		}
+func TestLocalOnlyOperationsRemainAnExplicitProxyPolicy(t *testing.T) {
+	expected := []string{
+		"DELETE /api/account",
+		"PUT /api/account/backend",
+		"POST /api/account/link",
+		"POST /api/wifi/connect",
+		"POST /api/wifi/disconnect",
+		"GET /api/wifi/networks",
 	}
-
-	if !reflect.DeepEqual(LocalOnlyOperations(), fromInventory) {
-		t.Fatalf("local-only operations = %#v, want %#v", LocalOnlyOperations(), fromInventory)
+	if !reflect.DeepEqual(LocalOnlyOperations(), expected) {
+		t.Fatalf("local-only operations = %#v, want %#v", LocalOnlyOperations(), expected)
 	}
 }
 

@@ -40,13 +40,14 @@ type StatusDevice struct {
 }
 
 type StatusFirmware struct {
-	Version       string `json:"version"`
-	Target        int    `json:"target"`
-	Branch        string `json:"branch"`
-	BuildDate     string `json:"build_date"`
-	CommitHash    string `json:"commit_hash"`
-	NWPVersion    string `json:"nwp_version,omitempty"`
-	MatterVersion string `json:"matter_version,omitempty"`
+	Version         string `json:"version"`
+	Target          int    `json:"target"`
+	Branch          string `json:"branch"`
+	BuildDate       string `json:"build_date"`
+	CommitHash      string `json:"commit_hash"`
+	IntercomVersion string `json:"intercom_version"`
+	NWPVersion      string `json:"nwp_version,omitempty"`
+	MatterVersion   string `json:"matter_version,omitempty"`
 }
 
 type StatusSystem struct {
@@ -484,14 +485,14 @@ type Network struct {
 }
 
 type ConnectRequestConfig struct {
-	SSID     string               `json:"ssid"`
-	Password string               `json:"password,omitempty"`
-	Security WiFiSecurityMethod   `json:"security,omitempty"`
-	IPConfig *WiFiConnectIPConfig `json:"ip_config,omitempty"`
+	SSID     string              `json:"ssid"`
+	Password string              `json:"password"`
+	Security WiFiSecurityMethod  `json:"security"`
+	IPConfig WiFiConnectIPConfig `json:"ip_config"`
 }
 
 type WiFiConnectIPConfig struct {
-	IPMethod WiFiIPMethod `json:"ip_method,omitempty"`
+	IPMethod WiFiIPMethod `json:"ip_method"`
 	Address  string       `json:"address,omitempty"`
 	Mask     string       `json:"mask,omitempty"`
 	Gateway  string       `json:"gateway,omitempty"`
@@ -514,8 +515,6 @@ type WiFiIPConfig struct {
 	IPMethod WiFiIPMethod `json:"ip_method,omitempty"`
 	IPType   WiFiIPType   `json:"ip_type,omitempty"`
 	Address  string       `json:"address,omitempty"`
-	Mask     string       `json:"mask,omitempty"`
-	Gateway  string       `json:"gateway,omitempty"`
 }
 
 type WiFiIPMethod string
@@ -573,7 +572,14 @@ type SmartHomePairingPayload struct {
 }
 
 type SmartHomeSwitchState struct {
-	State   bool                   `json:"state"`
+	State bool `json:"state"`
+}
+
+// SmartHomeSwitchUpdate changes either the current Matter switch state, its
+// startup behavior, or both. Pointer state preserves the firmware's partial
+// update contract.
+type SmartHomeSwitchUpdate struct {
+	State   *bool                  `json:"state,omitempty"`
 	Startup SmartHomeSwitchStartup `json:"startup,omitempty"`
 }
 

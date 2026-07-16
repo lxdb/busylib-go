@@ -1,0 +1,486 @@
+{
+  "repository": "https://github.com/busy-app/busybar-firmware.git",
+  "branch": "dev",
+  "firmwareCommit": "1add7be4f1fd31cbd0763c4c20add1ff6382232e",
+  "apiVersion": "24.4.0",
+  "protobufCommit": "07223321a4ab39a13c5167dbf85c87c418325634",
+  "license": "GPL-2.0-or-later",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/access",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_root.c",
+      "sourceSymbol": "http_api_root_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/access",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_root.c",
+      "sourceSymbol": "http_api_root_callback"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/account",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_account.c",
+      "sourceSymbol": "http_api_account_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/account/backend",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_account.c",
+      "sourceSymbol": "http_api_account_callback"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/account/backend",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_account.c",
+      "sourceSymbol": "http_api_account_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/account/info",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_account.c",
+      "sourceSymbol": "http_api_account_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/account/link",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_account.c",
+      "sourceSymbol": "http_api_account_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/account/status",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_account.c",
+      "sourceSymbol": "http_api_account_callback"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/assets/upload",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_assets.c",
+      "sourceSymbol": "http_api_assets_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/assets/upload",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_assets.c",
+      "sourceSymbol": "http_api_assets_hdr_callback"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/audio/play",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_audio.c",
+      "sourceSymbol": "http_api_audio_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/audio/play",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_audio.c",
+      "sourceSymbol": "http_api_audio_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/audio/volume",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_audio.c",
+      "sourceSymbol": "http_api_audio_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/audio/volume",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_audio.c",
+      "sourceSymbol": "http_api_audio_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ble/disable",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_ble.c",
+      "sourceSymbol": "http_api_ble_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ble/enable",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_ble.c",
+      "sourceSymbol": "http_api_ble_callback"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/ble/pairing",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_ble.c",
+      "sourceSymbol": "http_api_ble_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ble/status",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_ble.c",
+      "sourceSymbol": "http_api_ble_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/busy/profiles/{slot}",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_busy.c",
+      "sourceSymbol": "http_api_busy_callback"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/busy/profiles/{slot}",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_busy.c",
+      "sourceSymbol": "http_api_busy_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/busy/snapshot",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_busy.c",
+      "sourceSymbol": "http_api_busy_callback"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/busy/snapshot",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_busy.c",
+      "sourceSymbol": "http_api_busy_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/display/brightness",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_display.c",
+      "sourceSymbol": "http_api_display_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/display/brightness",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_display.c",
+      "sourceSymbol": "http_api_display_callback"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/display/draw",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_display.c",
+      "sourceSymbol": "http_api_display_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/display/draw",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_display.c",
+      "sourceSymbol": "http_api_display_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/input",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_input.c",
+      "sourceSymbol": "http_api_input_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/log_dump",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_log.c",
+      "sourceSymbol": "http_api_log_dump_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/name",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_name.c",
+      "sourceSymbol": "http_api_name_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/name",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_name.c",
+      "sourceSymbol": "http_api_name_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/screen",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_streaming.c",
+      "sourceSymbol": "http_api_streaming_single_frame_callback"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/smart_home/pairing",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_smart_home.c",
+      "sourceSymbol": "http_api_smart_home_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/smart_home/pairing",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_smart_home.c",
+      "sourceSymbol": "http_api_smart_home_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/smart_home/pairing",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_smart_home.c",
+      "sourceSymbol": "http_api_smart_home_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/smart_home/switch",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_smart_home.c",
+      "sourceSymbol": "http_api_smart_home_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/smart_home/switch",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_smart_home.c",
+      "sourceSymbol": "http_api_smart_home_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_status.c",
+      "sourceSymbol": "http_api_status_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/status/device",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_status.c",
+      "sourceSymbol": "http_api_status_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/status/firmware",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_status.c",
+      "sourceSymbol": "http_api_status_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/status/power",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_status.c",
+      "sourceSymbol": "http_api_status_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/status/system",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_status.c",
+      "sourceSymbol": "http_api_status_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/status/ws",
+      "phase": 6,
+      "sourceFile": "applications/services/web_server/http_api/api_status_streaming.c",
+      "sourceSymbol": "http_api_status_ws_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/storage/list",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_storage.c",
+      "sourceSymbol": "http_api_storage_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/storage/mkdir",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_storage.c",
+      "sourceSymbol": "http_api_storage_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/storage/read",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_storage.c",
+      "sourceSymbol": "http_api_storage_callback"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/storage/remove",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_storage.c",
+      "sourceSymbol": "http_api_storage_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/storage/rename",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_storage.c",
+      "sourceSymbol": "http_api_storage_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/storage/status",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_storage.c",
+      "sourceSymbol": "http_api_storage_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/storage/write",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_storage.c",
+      "sourceSymbol": "http_api_storage_hdr_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/time",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_time.c",
+      "sourceSymbol": "http_api_time_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/time/timestamp",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_time.c",
+      "sourceSymbol": "http_api_time_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/time/timezone",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_time.c",
+      "sourceSymbol": "http_api_time_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/time/timezone",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_time.c",
+      "sourceSymbol": "http_api_time_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/time/tzlist",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_time.c",
+      "sourceSymbol": "http_api_time_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/transport",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_root.c",
+      "sourceSymbol": "http_api_root_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/update",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_update.c",
+      "sourceSymbol": "http_api_update_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/update/abort_download",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_update.c",
+      "sourceSymbol": "http_api_update_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/update/autoupdate",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_update.c",
+      "sourceSymbol": "http_api_update_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/update/autoupdate",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_update.c",
+      "sourceSymbol": "http_api_update_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/update/changelog",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_update.c",
+      "sourceSymbol": "http_api_update_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/update/check",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_update.c",
+      "sourceSymbol": "http_api_update_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/update/install",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_update.c",
+      "sourceSymbol": "http_api_update_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/update/status",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_update.c",
+      "sourceSymbol": "http_api_update_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/version",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_root.c",
+      "sourceSymbol": "http_api_root_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/wifi/connect",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_wifi.c",
+      "sourceSymbol": "http_api_wifi_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/wifi/disconnect",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_wifi.c",
+      "sourceSymbol": "http_api_wifi_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wifi/networks",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_wifi.c",
+      "sourceSymbol": "http_api_wifi_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wifi/status",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_wifi.c",
+      "sourceSymbol": "http_api_wifi_callback"
+    }
+  ]
+}

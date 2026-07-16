@@ -121,17 +121,51 @@ func (c *Client) Do(ctx context.Context, request Request) (*Response, error) {
 	return c.DoPrepared(ctx, prepared)
 }
 
+func (c *Client) doStreamTo(ctx context.Context, request Request, writer io.Writer) (*Response, int64, error) {
+	if writer == nil {
+		return nil, 0, validationError(request.Method, request.Path, "writer must not be nil", nil)
+	}
+	prepared, err := c.Prepare(ctx, request)
+	if err != nil {
+		return nil, 0, err
+	}
+	return c.doPreparedTo(ctx, prepared, writer)
+}
+
 // DoPrepared executes a request created by Prepare.
 // It does not mutate the exported PreparedRequest fields. A prepared request
 // can be executed multiple times only when its body is repeatable.
 func (c *Client) DoPrepared(ctx context.Context, prepared *PreparedRequest) (*Response, error) {
-	if prepared == nil {
-		return nil, validationError("", "", "prepared request must not be nil", nil)
-	}
-	if c.timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, c.timeout)
+	ctx, cancel, execution, err := c.preparedExecution(ctx, prepared)
+	if cancel != nil {
 		defer cancel()
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return c.executePrepared(ctx, execution)
+}
+
+func (c *Client) doPreparedTo(ctx context.Context, prepared *PreparedRequest, writer io.Writer) (*Response, int64, error) {
+	ctx, cancel, execution, err := c.preparedExecution(ctx, prepared)
+	if cancel != nil {
+		defer cancel()
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return c.executePreparedTo(ctx, execution, writer)
+}
+
+func (c *Client) preparedExecution(ctx context.Context, prepared *PreparedRequest) (context.Context, context.CancelFunc, *executionRequest, error) {
+	if prepared == nil {
+		return ctx, nil, nil, validationError("", "", "prepared request must not be nil", nil)
+	}
+	var cancel context.CancelFunc
+	if c.timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, c.timeout)
 	}
 
 	execution := prepared.executionCopy()
@@ -139,12 +173,15 @@ func (c *Client) DoPrepared(ctx context.Context, prepared *PreparedRequest) (*Re
 	if c.shouldNegotiateVersion(execution) {
 		apiSemVer, err := c.APISemVer(ctx)
 		if err != nil {
-			return nil, err
+			if cancel != nil {
+				cancel()
+			}
+			return ctx, nil, nil, err
 		}
 		execution.header.Set(headerAPISemVer, apiSemVer)
 	}
 
-	return c.executePrepared(ctx, execution)
+	return ctx, cancel, execution, nil
 }
 
 type executionRequest struct {
@@ -171,6 +208,32 @@ func (p *PreparedRequest) executionCopy() *executionRequest {
 }
 
 func (c *Client) executePrepared(ctx context.Context, execution *executionRequest) (*Response, error) {
+	result, err := c.executePreparedWith(ctx, execution, readBufferedResponse)
+	if err != nil {
+		return nil, err
+	}
+	return result.response, nil
+}
+
+func (c *Client) executePreparedTo(ctx context.Context, execution *executionRequest, writer io.Writer) (*Response, int64, error) {
+	result, err := c.executePreparedWith(ctx, execution, streamResponseTo(writer))
+	if err != nil {
+		if result != nil {
+			return nil, result.written, err
+		}
+		return nil, 0, err
+	}
+	return result.response, result.written, nil
+}
+
+type executionResult struct {
+	response *Response
+	written  int64
+}
+
+type responseHandler func(*http.Response, *executionRequest, int) (*executionResult, error)
+
+func (c *Client) executePreparedWith(ctx context.Context, execution *executionRequest, handleResponse responseHandler) (*executionResult, error) {
 	maxAttempts := c.retryPolicy.MaxAttempts
 	if maxAttempts <= 0 {
 		maxAttempts = 1
@@ -189,37 +252,13 @@ func (c *Client) executePrepared(ctx context.Context, execution *executionReques
 				sleep(ctx, c.retryPolicy.Backoff)
 				continue
 			}
-			return nil, &RequestError{
-				Method:    execution.method,
-				Path:      execution.path,
-				RequestID: execution.requestID,
-				Attempts:  transportAttempts,
-				Err:       err,
-			}
-		}
-
-		body, readErr := io.ReadAll(response.Body)
-		closeErr := response.Body.Close()
-		if readErr != nil {
-			return nil, &RequestError{
-				Method:    execution.method,
-				Path:      execution.path,
-				RequestID: responseRequestID(response, execution.requestID),
-				Attempts:  transportAttempts,
-				Err:       readErr,
-			}
-		}
-		if closeErr != nil {
-			return nil, &RequestError{
-				Method:    execution.method,
-				Path:      execution.path,
-				RequestID: responseRequestID(response, execution.requestID),
-				Attempts:  transportAttempts,
-				Err:       closeErr,
-			}
+			return nil, requestError(execution, execution.requestID, transportAttempts, err)
 		}
 
 		if c.canRetryCompatibility(execution, response.StatusCode, compatibilityRetried) {
+			if _, err := readAndCloseResponseBody(execution, response, transportAttempts); err != nil {
+				return nil, err
+			}
 			if !execution.body.repeatable {
 				return nil, versionError(
 					execution.method,
@@ -239,6 +278,10 @@ func (c *Client) executePrepared(ctx context.Context, execution *executionReques
 		}
 
 		if response.StatusCode >= 400 {
+			body, err := readAndCloseResponseBody(execution, response, transportAttempts)
+			if err != nil {
+				return nil, err
+			}
 			return nil, newAPIError(
 				execution.method,
 				execution.path,
@@ -249,24 +292,75 @@ func (c *Client) executePrepared(ctx context.Context, execution *executionReques
 			)
 		}
 
-		if execution.responseMode == ResponseModeJSON && !json.Valid(body) {
-			return nil, wrapProtocolError(
-				execution.method,
-				execution.path,
-				responseRequestID(response, execution.requestID),
-				body,
-				errors.New("expected JSON response body"),
-			)
-		}
+		return handleResponse(response, execution, transportAttempts)
+	}
+}
 
-		return &Response{
-			Method:     execution.method,
-			Path:       execution.path,
-			StatusCode: response.StatusCode,
-			Header:     response.Header.Clone(),
-			RequestID:  responseRequestID(response, execution.requestID),
-			Body:       body,
-		}, nil
+func readBufferedResponse(response *http.Response, execution *executionRequest, attempts int) (*executionResult, error) {
+	body, err := readAndCloseResponseBody(execution, response, attempts)
+	if err != nil {
+		return nil, err
+	}
+	if execution.responseMode == ResponseModeJSON && !json.Valid(body) {
+		return nil, wrapProtocolError(
+			execution.method,
+			execution.path,
+			responseRequestID(response, execution.requestID),
+			body,
+			errors.New("expected JSON response body"),
+		)
+	}
+	return &executionResult{response: responseSummary(response, execution, body)}, nil
+}
+
+func streamResponseTo(writer io.Writer) responseHandler {
+	return func(response *http.Response, execution *executionRequest, attempts int) (*executionResult, error) {
+		requestID := responseRequestID(response, execution.requestID)
+		n, copyErr := io.Copy(writer, response.Body)
+		closeErr := response.Body.Close()
+		result := &executionResult{written: n}
+		if copyErr != nil {
+			return result, requestError(execution, requestID, attempts, copyErr)
+		}
+		if closeErr != nil {
+			return result, requestError(execution, requestID, attempts, closeErr)
+		}
+		result.response = responseSummary(response, execution, nil)
+		return result, nil
+	}
+}
+
+func readAndCloseResponseBody(execution *executionRequest, response *http.Response, attempts int) ([]byte, error) {
+	requestID := responseRequestID(response, execution.requestID)
+	body, readErr := io.ReadAll(response.Body)
+	closeErr := response.Body.Close()
+	if readErr != nil {
+		return nil, requestError(execution, requestID, attempts, readErr)
+	}
+	if closeErr != nil {
+		return nil, requestError(execution, requestID, attempts, closeErr)
+	}
+	return body, nil
+}
+
+func responseSummary(response *http.Response, execution *executionRequest, body []byte) *Response {
+	return &Response{
+		Method:     execution.method,
+		Path:       execution.path,
+		StatusCode: response.StatusCode,
+		Header:     response.Header.Clone(),
+		RequestID:  responseRequestID(response, execution.requestID),
+		Body:       body,
+	}
+}
+
+func requestError(execution *executionRequest, requestID string, attempts int, err error) *RequestError {
+	return &RequestError{
+		Method:    execution.method,
+		Path:      execution.path,
+		RequestID: requestID,
+		Attempts:  attempts,
+		Err:       err,
 	}
 }
 

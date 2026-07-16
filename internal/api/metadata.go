@@ -5,6 +5,9 @@ import (
 	"strings"
 )
 
+// localOnlyOperations is a conservative proxy privacy policy. The local
+// firmware contract does not define remote transport availability, so this
+// list is intentionally kept separate from the firmware contract receipt.
 var localOnlyOperations = map[string]struct{}{
 	"DELETE /api/account":       {},
 	"PUT /api/account/backend":  {},
@@ -45,4 +48,21 @@ func splitOperationID(operation string) (string, string) {
 		return operation, ""
 	}
 	return method, path
+}
+
+func methodRank(method string) int {
+	switch method {
+	case "DELETE":
+		return 0
+	case "GET":
+		return 1
+	case "PATCH":
+		return 2
+	case "POST":
+		return 3
+	case "PUT":
+		return 4
+	default:
+		return 100
+	}
 }
