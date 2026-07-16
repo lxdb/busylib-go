@@ -82,6 +82,95 @@ data[0] = color.blue;
 	}
 }
 
+func TestCheckSnapshotsVerifiesCanonicalKeysAndAllTypedUpdateTags(t *testing.T) {
+	contract, err := internalapi.LoadContractFile("../../testdata/firmware-contract.json")
+	if err != nil {
+		t.Fatalf("load contract: %v", err)
+	}
+	root := t.TempDir()
+	files := map[string]string{
+		"applications/services/web_server/http_api/api_name.c": `http_api_name_callback "name"`,
+		"applications/services/web_server/http_api/api_root.c": `http_api_root_callback \"api_semver\"`,
+		"applications/services/web_server/http_api/api_status.c": `
+http_api_status_callback
+"device" "firmware" "system" "power"
+"api_semver" "uptime" "boot_time" "auto_update_enabled"
+"state" "battery_charge" "battery_voltage" "battery_current" "usb_voltage"
+`,
+		"applications/services/web_server/http_api/api_time.c":    `http_api_time_callback "timestamp"`,
+		"applications/services/web_server/http_api/api_wifi.c":    `http_api_wifi_callback "state" "ssid" "bssid" "channel" "rssi" "security" "ip_config"`,
+		"applications/services/web_server/http_api/api_display.c": `http_api_display_callback "value"`,
+		"applications/services/web_server/http_api/api_audio.c":   `http_api_audio_callback "volume"`,
+		"applications/services/web_server/http_api/api_ble.c":     `http_api_ble_callback "status" "address"`,
+		"applications/services/web_server/http_api/api_storage.c": `http_api_storage_callback "used_bytes" "free_bytes" "total_bytes"`,
+		"applications/services/state_publisher/subscriptions.c": `
+state_publisher_collect_all
+BSB_State_StateUpdate_device_name_tag
+BSB_State_StateUpdate_power_tag
+BSB_State_StateUpdate_brightness_tag
+BSB_State_StateUpdate_audio_volume_tag
+BSB_State_StateUpdate_wifi_tag
+BSB_State_StateUpdate_update_state_tag
+BSB_State_StateUpdate_update_check_tag
+BSB_State_StateUpdate_timezone_tag
+BSB_State_StateUpdate_matter_tag
+BSB_State_StateUpdate_frame_tag
+BSB_State_StateUpdate_input_tag
+BSB_State_StateUpdate_timer_tag
+BSB_State_StateUpdate_ble_tag
+BSB_State_StateUpdate_auto_update_state_tag
+BSB_State_StateUpdate_timer_profiles_tag
+`,
+	}
+	writeFirmwareFixture(t, root, files)
+
+	if err := checkSnapshots(root, contract, make(map[string][]byte)); err != nil {
+		t.Fatalf("checkSnapshots: %v", err)
+	}
+
+	namePath := filepath.Join(root, "applications/services/web_server/http_api/api_name.c")
+	if err := os.WriteFile(namePath, []byte(`http_api_name_callback "device"`), 0o600); err != nil {
+		t.Fatalf("rewrite name fixture: %v", err)
+	}
+	if err := checkSnapshots(root, contract, make(map[string][]byte)); err == nil {
+		t.Fatal("checkSnapshots accepted a changed canonical name key")
+	}
+}
+
+func TestCheckOptionalToolsVerifiesCLIAndMediaFacts(t *testing.T) {
+	contract, err := internalapi.LoadContractFile("../../testdata/firmware-contract.json")
+	if err != nil {
+		t.Fatalf("load contract: %v", err)
+	}
+	root := t.TempDir()
+	files := map[string]string{
+		"applications/services/cli_socket/cli_socket.c":                                  `#define CLI_SOCKET_PORT 23`,
+		"applications/services/usb_network/settings/usb_network_settings_interface_v1.c": `.bytes = {10, 0, 4, 20}`,
+		"lib/cli/shell/cli_shell_line.c":                                                 `snprintf(buf, length - 1, "%s>: ", prompt ? prompt : "");`,
+		"applications/services/power/power_cli.c":                                        `power_cli_command power_cli_reboot "sw"`,
+		"targets/f21/config/lv_conf.h":                                                   `#define LV_USE_LODEPNG 1`,
+		"applications/services/web_server/http_api/api_display.c":                        `api_display_validate_image header.w > display_parameters->width header.h > display_parameters->height`,
+		"applications/services/audio/audio.c":                                            `#define AUDIO_SAMPLE_RATE (44100) int16_t buffer storage_file_read`,
+		"applications/services/audio/audio.h":                                            `audio_play_file Header: none Channels: 1 Rate: 44100 Hz Bits: 16bit LE`,
+	}
+	for _, command := range contract.OptionalTools.CLI.Commands {
+		files[command.SourceFile] += ` name="` + command.Name + `" ` + command.SourceSymbol
+	}
+	writeFirmwareFixture(t, root, files)
+
+	if err := checkOptionalTools(root, contract.OptionalTools, make(map[string][]byte)); err != nil {
+		t.Fatalf("checkOptionalTools: %v", err)
+	}
+
+	promptPath := filepath.Join(root, "lib/cli/shell/cli_shell_line.c")
+	if err := os.WriteFile(promptPath, []byte(`snprintf(buf, length - 1, "%s> ", prompt ? prompt : "");`), 0o600); err != nil {
+		t.Fatalf("rewrite prompt fixture: %v", err)
+	}
+	if err := checkOptionalTools(root, contract.OptionalTools, make(map[string][]byte)); err == nil {
+		t.Fatal("checkOptionalTools accepted a changed CLI prompt")
+	}
+}
+
 func writeFirmwareFixture(t *testing.T, root string, files map[string]string) {
 	t.Helper()
 	for name, contents := range files {

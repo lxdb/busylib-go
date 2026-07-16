@@ -33,7 +33,7 @@ func main() {
 	if err := checkFirmware(*firmwareDir, contract); err != nil {
 		fatalf("firmware contract drift: %v", err)
 	}
-	fmt.Printf("firmware contract matches %s at %s (API %s, %d operations, status stream and frames verified)\n", contract.Repository, contract.FirmwareCommit, contract.APIVersion, len(contract.Operations))
+	fmt.Printf("firmware contract matches %s at %s (API %s, %d operations, status stream, frames, snapshots, and optional tools verified)\n", contract.Repository, contract.FirmwareCommit, contract.APIVersion, len(contract.Operations))
 }
 
 func checkFirmware(root string, contract internalapi.Contract) error {
@@ -88,7 +88,13 @@ func checkFirmware(root string, contract internalapi.Contract) error {
 	if err := checkStatusStream(root, contract.StatusStream, checked); err != nil {
 		return err
 	}
-	return checkFrames(root, contract.Frames, checked)
+	if err := checkFrames(root, contract.Frames, checked); err != nil {
+		return err
+	}
+	if err := checkSnapshots(root, contract, checked); err != nil {
+		return err
+	}
+	return checkOptionalTools(root, contract.OptionalTools, checked)
 }
 
 func checkStatusStream(root string, contract internalapi.StatusStreamContract, checked map[string][]byte) error {
@@ -268,6 +274,159 @@ func checkFrames(root string, contract internalapi.FrameContract, checked map[st
 		}
 	}
 	return nil
+}
+
+func checkSnapshots(root string, contract internalapi.Contract, checked map[string][]byte) error {
+	for _, reference := range contract.Snapshots.SourceReferences {
+		data, err := readFirmwareFile(root, reference.SourceFile, checked)
+		if err != nil {
+			return fmt.Errorf("snapshots: %w", err)
+		}
+		if !strings.Contains(string(data), reference.SourceSymbol) {
+			return fmt.Errorf("snapshot source symbol %q is missing from %s", reference.SourceSymbol, reference.SourceFile)
+		}
+	}
+
+	for _, endpoint := range contract.Snapshots.HTTP {
+		operation, ok := contract.Operation("GET " + endpoint.Path)
+		if !ok || operation.Phase != 3 {
+			return fmt.Errorf("snapshot endpoint GET %s is not owned by phase 3", endpoint.Path)
+		}
+		data, err := readFirmwareFile(root, operation.SourceFile, checked)
+		if err != nil {
+			return err
+		}
+		for _, key := range endpoint.CanonicalKeys {
+			if !containsJSONKey(data, key) {
+				return fmt.Errorf("%s is missing canonical snapshot key %q", operation.SourceFile, key)
+			}
+		}
+	}
+
+	const subscriptionsSource = "applications/services/state_publisher/subscriptions.c"
+	subscriptions, err := readFirmwareFile(root, subscriptionsSource, checked)
+	if err != nil {
+		return err
+	}
+	for _, kind := range contract.Snapshots.StateUpdateKinds {
+		marker := "BSB_State_StateUpdate_" + kind + "_tag"
+		if !strings.Contains(string(subscriptions), marker) {
+			return fmt.Errorf("%s is missing %q", subscriptionsSource, marker)
+		}
+	}
+	return nil
+}
+
+func checkOptionalTools(root string, contract internalapi.OptionalToolsContract, checked map[string][]byte) error {
+	for _, reference := range append(contract.CLI.SourceReferences, contract.Media.SourceReferences...) {
+		data, err := readFirmwareFile(root, reference.SourceFile, checked)
+		if err != nil {
+			return fmt.Errorf("optional tools: %w", err)
+		}
+		if !strings.Contains(string(data), reference.SourceSymbol) {
+			return fmt.Errorf("optional tools source symbol %q is missing from %s", reference.SourceSymbol, reference.SourceFile)
+		}
+	}
+
+	for _, command := range contract.CLI.Commands {
+		data, err := readFirmwareFile(root, command.SourceFile, checked)
+		if err != nil {
+			return fmt.Errorf("CLI command %s: %w", command.Name, err)
+		}
+		if !strings.Contains(string(data), `name="`+command.Name+`"`) {
+			return fmt.Errorf("CLI command %q is missing from %s", command.Name, command.SourceFile)
+		}
+		if !strings.Contains(string(data), command.SourceSymbol) {
+			return fmt.Errorf("CLI command %q source symbol %q is missing from %s", command.Name, command.SourceSymbol, command.SourceFile)
+		}
+	}
+
+	const (
+		cliSocketSource  = "applications/services/cli_socket/cli_socket.c"
+		usbNetworkSource = "applications/services/usb_network/settings/usb_network_settings_interface_v1.c"
+		promptSource     = "lib/cli/shell/cli_shell_line.c"
+		powerSource      = "applications/services/power/power_cli.c"
+		pngSource        = "targets/f21/config/lv_conf.h"
+		displaySource    = "applications/services/web_server/http_api/api_display.c"
+		audioSource      = "applications/services/audio/audio.c"
+		audioHeader      = "applications/services/audio/audio.h"
+	)
+	cliSocket, err := readFirmwareFile(root, cliSocketSource, checked)
+	if err != nil {
+		return err
+	}
+	if err := checkDefine(cliSocketSource, cliSocket, "CLI_SOCKET_PORT", contract.CLI.Port); err != nil {
+		return err
+	}
+	usbNetwork, err := readFirmwareFile(root, usbNetworkSource, checked)
+	if err != nil {
+		return err
+	}
+	addressMarker := strings.ReplaceAll(contract.CLI.DefaultAddress, ".", ", ")
+	if !strings.Contains(string(usbNetwork), "{"+addressMarker+"}") {
+		return fmt.Errorf("%s is missing USB network address %s", usbNetworkSource, contract.CLI.DefaultAddress)
+	}
+	prompt, err := readFirmwareFile(root, promptSource, checked)
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(string(prompt), `"%s`+contract.CLI.Prompt+`"`) {
+		return fmt.Errorf("%s is missing CLI prompt %q", promptSource, contract.CLI.Prompt)
+	}
+	power, err := readFirmwareFile(root, powerSource, checked)
+	if err != nil {
+		return err
+	}
+	for _, marker := range []string{"power_cli_reboot", `"sw"`} {
+		if !strings.Contains(string(power), marker) {
+			return fmt.Errorf("%s is missing %q", powerSource, marker)
+		}
+	}
+
+	png, err := readFirmwareFile(root, pngSource, checked)
+	if err != nil {
+		return err
+	}
+	if err := checkDefine(pngSource, png, "LV_USE_LODEPNG", 1); err != nil {
+		return err
+	}
+	display, err := readFirmwareFile(root, displaySource, checked)
+	if err != nil {
+		return err
+	}
+	for _, marker := range []string{"header.w > display_parameters->width", "header.h > display_parameters->height"} {
+		if !strings.Contains(string(display), marker) {
+			return fmt.Errorf("%s is missing %q", displaySource, marker)
+		}
+	}
+	audio, err := readFirmwareFile(root, audioSource, checked)
+	if err != nil {
+		return err
+	}
+	if err := checkDefine(audioSource, audio, "AUDIO_SAMPLE_RATE", contract.Media.Audio.SampleRateHz); err != nil {
+		return err
+	}
+	for _, marker := range []string{"int16_t buffer", "storage_file_read"} {
+		if !strings.Contains(string(audio), marker) {
+			return fmt.Errorf("%s is missing %q", audioSource, marker)
+		}
+	}
+	header, err := readFirmwareFile(root, audioHeader, checked)
+	if err != nil {
+		return err
+	}
+	for _, marker := range []string{"Header: none", "Channels: 1", "Rate: 44100 Hz", "Bits: 16bit LE"} {
+		if !strings.Contains(string(header), marker) {
+			return fmt.Errorf("%s is missing %q", audioHeader, marker)
+		}
+	}
+	return nil
+}
+
+func containsJSONKey(data []byte, key string) bool {
+	source := string(data)
+	return strings.Contains(source, `"`+key+`"`) ||
+		strings.Contains(source, `\"`+key+`\"`)
 }
 
 func readFirmwareFile(root, sourceFile string, checked map[string][]byte) ([]byte, error) {

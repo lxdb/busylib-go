@@ -21,15 +21,17 @@ const (
 // handlers. It contains contract facts and source provenance, not copied
 // firmware implementation code.
 type Contract struct {
-	Repository     string               `json:"repository"`
-	Branch         string               `json:"branch"`
-	FirmwareCommit string               `json:"firmwareCommit"`
-	APIVersion     string               `json:"apiVersion"`
-	ProtobufCommit string               `json:"protobufCommit"`
-	License        string               `json:"license"`
-	StatusStream   StatusStreamContract `json:"statusStream"`
-	Frames         FrameContract        `json:"frames"`
-	Operations     []Operation          `json:"operations"`
+	Repository     string                `json:"repository"`
+	Branch         string                `json:"branch"`
+	FirmwareCommit string                `json:"firmwareCommit"`
+	APIVersion     string                `json:"apiVersion"`
+	ProtobufCommit string                `json:"protobufCommit"`
+	License        string                `json:"license"`
+	StatusStream   StatusStreamContract  `json:"statusStream"`
+	Frames         FrameContract         `json:"frames"`
+	Snapshots      SnapshotContract      `json:"snapshots"`
+	OptionalTools  OptionalToolsContract `json:"optionalTools"`
+	Operations     []Operation           `json:"operations"`
 }
 
 type StatusStreamContract struct {
@@ -68,6 +70,64 @@ type FrameSurfaceContract struct {
 	PlainBytes    int    `json:"plainBytes"`
 	WireLayout    string `json:"wireLayout"`
 	RLEBlockBytes int    `json:"rleBlockBytes"`
+}
+
+type SnapshotContract struct {
+	HTTP             []SnapshotHTTPContract `json:"http"`
+	StateUpdateKinds []string               `json:"stateUpdateKinds"`
+	SourceReferences []SourceReference      `json:"sourceReferences"`
+}
+
+type SnapshotHTTPContract struct {
+	Section       string   `json:"section"`
+	Path          string   `json:"path"`
+	CanonicalKeys []string `json:"canonicalKeys"`
+}
+
+type OptionalToolsContract struct {
+	CLI   CLIContract   `json:"cli"`
+	Media MediaContract `json:"media"`
+}
+
+type CLIContract struct {
+	DefaultAddress   string               `json:"defaultAddress"`
+	Port             int                  `json:"port"`
+	Prompt           string               `json:"prompt"`
+	InterruptByte    int                  `json:"interruptByte"`
+	RebootCommand    string               `json:"rebootCommand"`
+	Commands         []CLICommandContract `json:"commands"`
+	SourceReferences []SourceReference    `json:"sourceReferences"`
+}
+
+type CLICommandContract struct {
+	Name         string `json:"name"`
+	Mode         string `json:"mode"`
+	SourceFile   string `json:"sourceFile"`
+	SourceSymbol string `json:"sourceSymbol"`
+}
+
+type MediaContract struct {
+	Image            ImageConversionContract `json:"image"`
+	Audio            AudioConversionContract `json:"audio"`
+	SourceReferences []SourceReference       `json:"sourceReferences"`
+}
+
+type ImageConversionContract struct {
+	OutputFormat   string `json:"outputFormat"`
+	Decoder        string `json:"decoder"`
+	FrontMaxWidth  int    `json:"frontMaxWidth"`
+	FrontMaxHeight int    `json:"frontMaxHeight"`
+	BackMaxWidth   int    `json:"backMaxWidth"`
+	BackMaxHeight  int    `json:"backMaxHeight"`
+}
+
+type AudioConversionContract struct {
+	Header          string `json:"header"`
+	Channels        int    `json:"channels"`
+	SampleRateHz    int    `json:"sampleRateHz"`
+	BitsPerSample   int    `json:"bitsPerSample"`
+	ByteOrder       string `json:"byteOrder"`
+	OutputExtension string `json:"outputExtension"`
 }
 
 type SourceReference struct {
@@ -117,6 +177,12 @@ func (c Contract) Validate() error {
 		return err
 	}
 	if err := c.Frames.Validate(); err != nil {
+		return err
+	}
+	if err := c.Snapshots.Validate(); err != nil {
+		return err
+	}
+	if err := c.OptionalTools.Validate(); err != nil {
 		return err
 	}
 
@@ -221,6 +287,151 @@ func (c FrameContract) Validate() error {
 	for _, reference := range c.SourceReferences {
 		if reference.SourceFile == "" || reference.SourceSymbol == "" {
 			return fmt.Errorf("frame source provenance is incomplete")
+		}
+	}
+	return nil
+}
+
+func (c SnapshotContract) Validate() error {
+	wantHTTP := []SnapshotHTTPContract{
+		{Section: "name", Path: "/api/name", CanonicalKeys: []string{"name"}},
+		{Section: "version", Path: "/api/version", CanonicalKeys: []string{"api_semver"}},
+		{Section: "status", Path: "/api/status", CanonicalKeys: []string{"device", "firmware", "system", "power"}},
+		{Section: "system", Path: "/api/status/system", CanonicalKeys: []string{"api_semver", "uptime", "boot_time", "auto_update_enabled"}},
+		{Section: "power", Path: "/api/status/power", CanonicalKeys: []string{"state", "battery_charge", "battery_voltage", "battery_current", "usb_voltage"}},
+		{Section: "time", Path: "/api/time", CanonicalKeys: []string{"timestamp"}},
+		{Section: "wifi", Path: "/api/wifi/status", CanonicalKeys: []string{"state", "ssid", "bssid", "channel", "rssi", "security", "ip_config"}},
+		{Section: "brightness", Path: "/api/display/brightness", CanonicalKeys: []string{"value"}},
+		{Section: "audio_volume", Path: "/api/audio/volume", CanonicalKeys: []string{"volume"}},
+		{Section: "ble", Path: "/api/ble/status", CanonicalKeys: []string{"status", "address"}},
+		{Section: "storage", Path: "/api/storage/status", CanonicalKeys: []string{"used_bytes", "free_bytes", "total_bytes"}},
+	}
+	if len(c.HTTP) != len(wantHTTP) {
+		return fmt.Errorf("snapshot HTTP section count = %d, want %d", len(c.HTTP), len(wantHTTP))
+	}
+	for index, want := range wantHTTP {
+		got := c.HTTP[index]
+		if got.Section != want.Section || got.Path != want.Path || !slices.Equal(got.CanonicalKeys, want.CanonicalKeys) {
+			return fmt.Errorf("snapshot HTTP section %d is invalid", index)
+		}
+	}
+	wantKinds := []string{
+		"device_name",
+		"power",
+		"brightness",
+		"audio_volume",
+		"wifi",
+		"update_state",
+		"update_check",
+		"timezone",
+		"matter",
+		"frame",
+		"input",
+		"timer",
+		"ble",
+		"auto_update_state",
+		"timer_profiles",
+	}
+	if !slices.Equal(c.StateUpdateKinds, wantKinds) {
+		return fmt.Errorf("snapshot state update kinds are invalid")
+	}
+	if len(c.SourceReferences) != 10 {
+		return fmt.Errorf("snapshot source reference count = %d, want 10", len(c.SourceReferences))
+	}
+	for _, reference := range c.SourceReferences {
+		if reference.SourceFile == "" || reference.SourceSymbol == "" {
+			return fmt.Errorf("snapshot source provenance is incomplete")
+		}
+	}
+	return nil
+}
+
+func (c OptionalToolsContract) Validate() error {
+	if err := c.CLI.Validate(); err != nil {
+		return err
+	}
+	return c.Media.Validate()
+}
+
+func (c CLIContract) Validate() error {
+	if c.DefaultAddress != "10.0.4.20" || c.Port != 23 || c.Prompt != ">: " || c.InterruptByte != 3 {
+		return fmt.Errorf("optional CLI transport contract is invalid")
+	}
+	if c.RebootCommand != "power reboot sw" {
+		return fmt.Errorf("optional CLI reboot command is invalid")
+	}
+	want := []struct {
+		name string
+		mode string
+	}{
+		{"uptime", "buffered"},
+		{"power", "buffered"},
+		{"storage", "buffered"},
+		{"update", "buffered"},
+		{"input", "buffered"},
+		{"loader", "buffered"},
+		{"top", "stream"},
+		{"free", "buffered"},
+		{"free_blocks", "buffered"},
+		{"log", "stream"},
+		{"echo", "buffered"},
+		{"device_info", "buffered"},
+		{"date", "buffered"},
+		{"timezone", "buffered"},
+		{"matter", "buffered"},
+		{"audio", "buffered"},
+		{"display", "buffered"},
+		{"sysctl", "buffered"},
+		{"log_dump", "buffered"},
+	}
+	if len(c.Commands) != len(want) {
+		return fmt.Errorf("optional CLI command count = %d, want %d", len(c.Commands), len(want))
+	}
+	for index, expected := range want {
+		command := c.Commands[index]
+		if command.Name != expected.name || command.Mode != expected.mode || command.SourceFile == "" || command.SourceSymbol == "" {
+			return fmt.Errorf("optional CLI command %d is invalid", index)
+		}
+	}
+	if len(c.SourceReferences) != 4 {
+		return fmt.Errorf("optional CLI source reference count = %d, want 4", len(c.SourceReferences))
+	}
+	return validateSourceReferences("optional CLI", c.SourceReferences)
+}
+
+func (c MediaContract) Validate() error {
+	wantImage := ImageConversionContract{
+		OutputFormat:   "PNG",
+		Decoder:        "LODEPNG",
+		FrontMaxWidth:  72,
+		FrontMaxHeight: 16,
+		BackMaxWidth:   160,
+		BackMaxHeight:  80,
+	}
+	if c.Image != wantImage {
+		return fmt.Errorf("optional image conversion contract is invalid")
+	}
+	wantAudio := AudioConversionContract{
+		Header:          "none",
+		Channels:        1,
+		SampleRateHz:    44_100,
+		BitsPerSample:   16,
+		ByteOrder:       "little_endian",
+		OutputExtension: ".snd",
+	}
+	if c.Audio != wantAudio {
+		return fmt.Errorf("optional audio conversion contract is invalid")
+	}
+	if len(c.SourceReferences) != 4 {
+		return fmt.Errorf("optional media source reference count = %d, want 4", len(c.SourceReferences))
+	}
+	return validateSourceReferences("optional media", c.SourceReferences)
+}
+
+func validateSourceReferences(section string, references []SourceReference) error {
+	for _, reference := range references {
+		if reference.SourceFile == "" || reference.SourceSymbol == "" {
+			return fmt.Errorf("%s source provenance is incomplete", section)
 		}
 	}
 	return nil

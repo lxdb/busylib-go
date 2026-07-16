@@ -2,7 +2,7 @@
 
 Go library for BUSY Bar devices.
 
-This repository currently contains the completed Phase 3 through Phase 7 local
+This repository currently contains the completed Phase 3 through Phase 9 local
 device implementation:
 
 - Go module: `github.com/lxdb/busylib-go`
@@ -19,13 +19,16 @@ device implementation:
   lifecycle status, stale-data detection, bounded reconnect, and snapshot requests
 - Firmware-aligned HTTP and status-stream frame decoding with raw pixels,
   Plain/RLE support, and portable RGBA output
+- Best-effort HTTP snapshots plus a thread-safe store that retains and merges
+  all 15 typed status-stream updates without owning the stream lifecycle
+- An optional raw USB-network CLI client with fresh and persistent sessions,
+  curated firmware command wrappers, bounded responses, and ETX cancellation
+- Optional image preparation and audio conversion packages with no added Go
+  dependencies; compressed audio uses a caller-configurable `ffmpeg` executable
 - Generated protobuf packages for the BUSY Bar status stream
 - Local copies of the firmware-selected protobuf inputs
 - A pinned firmware contract audit receipt with source provenance
 - Reproducible protobuf generation and an optional firmware contract checker
-
-Dashboard snapshots, USB diagnostics, and converters are intentionally deferred
-to later phases.
 
 ## Typed HTTP Services
 
@@ -159,6 +162,119 @@ uses front `72x16` BGR bytes despite the protobuf `RGB888` name, and back
 `160x80` L4 bytes with the low nibble first. Unsupported or unknown enum values
 remain visible on `Frame` and conversion returns a typed `frame.Error`.
 
+## Snapshot Helpers
+
+The optional `snapshot` package collects the 11 canonical firmware HTTP fields
+sequentially. Endpoint and payload failures stay on their individual fields;
+caller cancellation is returned with the partial result:
+
+```go
+deviceSnapshot, err := snapshot.Collect(ctx, client)
+if err != nil {
+	// The caller cancelled or collection could not be started.
+}
+for section, fieldErr := range deviceSnapshot.Failures() {
+	_ = section
+	_ = fieldErr
+}
+```
+
+`snapshot.NewStore` owns merge synchronization and defensive copies, but no
+goroutines or channels. Apply every typed update from each stream message and
+use the returned sections as a synchronous change notification:
+
+```go
+store := snapshot.NewStore(deviceSnapshot)
+for message := range statusStream.Messages() {
+	change := store.Apply(message.Updates...)
+	for _, section := range change.Sections {
+		_ = section
+	}
+}
+```
+
+The store retains all 15 firmware typed updates, including the latest frame,
+input event, timer, and profiles. Missing or unknown updates do not clear known
+state. Successful stream updates clear stale field-local HTTP diagnostics.
+
+## Optional USB CLI
+
+The `usb` package connects to the raw firmware CLI exposed by the USB network
+interface at `10.0.4.20:23`. It is independent of the HTTP client. Direct
+commands use a fresh connection; `Open` creates an explicitly persistent,
+serialized session. A failed persistent transport is terminal and is never
+silently reconnected or replayed.
+
+This example requires a connected BUSY Bar:
+
+```go
+cli, err := usb.NewClient()
+if err != nil {
+	// handle configuration error
+}
+
+response, err := cli.Commands().Uptime(ctx)
+if err != nil {
+	// handle usb.Error
+}
+fmt.Println(response.Output)
+
+session, err := cli.Open(ctx)
+if err != nil {
+	// handle connection error
+}
+defer session.Close()
+
+streamCtx, cancel := context.WithCancel(ctx)
+defer cancel()
+err = session.Commands().Log(streamCtx, os.Stdout, "info")
+```
+
+Cancelling `Log`, `Top`, or generic `StreamCommand` sends byte `3` (ETX) and
+keeps a session usable only if the firmware prompt is recovered. The package
+does not send Telnet negotiation; it tolerantly removes inbound IAC sequences,
+ANSI control sequences, command echoes, and the `>: ` prompt from cleaned
+buffered output. `Response.Raw` preserves the prompt-framed device bytes.
+
+## Optional Media Conversion
+
+`convert.Image` accepts PNG, JPEG, or static GIF, downsizes with bilinear
+sampling, center-crops to the front or back display maximum, never upscales,
+and emits PNG:
+
+```go
+prepared, err := convert.Image(source, busylib.DisplayFront)
+if err != nil {
+	// handle convert.ConversionError
+}
+err = client.Assets().Upload(ctx, busylib.UploadAssetRequest{
+	ApplicationName: "my_app",
+	File:            "status.png",
+	Body:            busylib.BytesBody(prepared.Data, "image/png"),
+})
+```
+
+`convert/audio` passes through non-empty, even-length `.snd`, `.raw`, and
+`.pcm` input. It invokes `ffmpeg` only for `.mp3`, `.ogg`, `.aac`, `.m4a`,
+`.flac`, or `.wav`, producing headerless mono 44.1 kHz signed 16-bit
+little-endian PCM with a `.snd` result extension:
+
+```go
+preparedAudio, err := audio.Convert(ctx, source, "tone.mp3")
+if err != nil {
+	// handle audio.ConversionError
+}
+err = client.Assets().Upload(ctx, busylib.UploadAssetRequest{
+	ApplicationName: "my_app",
+	File:            "tone.snd",
+	Body:            busylib.BytesBody(preparedAudio.Data, "application/octet-stream"),
+})
+```
+
+Use `audio.WithFFmpegPath` when `ffmpeg` is not on `PATH`. Animated GIF, video,
+animation, and unknown conversion inputs are rejected locally. Unknown files
+can still be written through the core storage API unchanged.
+
 ## Request Core
 
 The root package also exposes raw request execution for schema drift,
@@ -242,7 +358,7 @@ Other busylib implementations and the historical OpenAPI snapshot are research
 inputs only and cannot override firmware handlers, validation, serialization,
 or constants.
 
-The Phase 3 through Phase 7 implementation audit used
+The Phase 3 through Phase 9 implementation audit used
 `https://github.com/busy-app/busybar-firmware.git` at commit
 `1add7be4f1fd31cbd0763c4c20add1ff6382232e` (branch `dev`, API `24.4.0`).
 Firmware selects protobuf commit

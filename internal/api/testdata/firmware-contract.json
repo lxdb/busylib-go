@@ -104,6 +104,303 @@
       }
     ]
   },
+  "snapshots": {
+    "http": [
+      {
+        "section": "name",
+        "path": "/api/name",
+        "canonicalKeys": ["name"]
+      },
+      {
+        "section": "version",
+        "path": "/api/version",
+        "canonicalKeys": ["api_semver"]
+      },
+      {
+        "section": "status",
+        "path": "/api/status",
+        "canonicalKeys": ["device", "firmware", "system", "power"]
+      },
+      {
+        "section": "system",
+        "path": "/api/status/system",
+        "canonicalKeys": ["api_semver", "uptime", "boot_time", "auto_update_enabled"]
+      },
+      {
+        "section": "power",
+        "path": "/api/status/power",
+        "canonicalKeys": ["state", "battery_charge", "battery_voltage", "battery_current", "usb_voltage"]
+      },
+      {
+        "section": "time",
+        "path": "/api/time",
+        "canonicalKeys": ["timestamp"]
+      },
+      {
+        "section": "wifi",
+        "path": "/api/wifi/status",
+        "canonicalKeys": ["state", "ssid", "bssid", "channel", "rssi", "security", "ip_config"]
+      },
+      {
+        "section": "brightness",
+        "path": "/api/display/brightness",
+        "canonicalKeys": ["value"]
+      },
+      {
+        "section": "audio_volume",
+        "path": "/api/audio/volume",
+        "canonicalKeys": ["volume"]
+      },
+      {
+        "section": "ble",
+        "path": "/api/ble/status",
+        "canonicalKeys": ["status", "address"]
+      },
+      {
+        "section": "storage",
+        "path": "/api/storage/status",
+        "canonicalKeys": ["used_bytes", "free_bytes", "total_bytes"]
+      }
+    ],
+    "stateUpdateKinds": [
+      "device_name",
+      "power",
+      "brightness",
+      "audio_volume",
+      "wifi",
+      "update_state",
+      "update_check",
+      "timezone",
+      "matter",
+      "frame",
+      "input",
+      "timer",
+      "ble",
+      "auto_update_state",
+      "timer_profiles"
+    ],
+    "sourceReferences": [
+      {
+        "sourceFile": "applications/services/web_server/http_api/api_name.c",
+        "sourceSymbol": "http_api_name_callback"
+      },
+      {
+        "sourceFile": "applications/services/web_server/http_api/api_root.c",
+        "sourceSymbol": "http_api_root_callback"
+      },
+      {
+        "sourceFile": "applications/services/web_server/http_api/api_status.c",
+        "sourceSymbol": "http_api_status_callback"
+      },
+      {
+        "sourceFile": "applications/services/web_server/http_api/api_time.c",
+        "sourceSymbol": "http_api_time_callback"
+      },
+      {
+        "sourceFile": "applications/services/web_server/http_api/api_wifi.c",
+        "sourceSymbol": "http_api_wifi_callback"
+      },
+      {
+        "sourceFile": "applications/services/web_server/http_api/api_display.c",
+        "sourceSymbol": "http_api_display_callback"
+      },
+      {
+        "sourceFile": "applications/services/web_server/http_api/api_audio.c",
+        "sourceSymbol": "http_api_audio_callback"
+      },
+      {
+        "sourceFile": "applications/services/web_server/http_api/api_ble.c",
+        "sourceSymbol": "http_api_ble_callback"
+      },
+      {
+        "sourceFile": "applications/services/web_server/http_api/api_storage.c",
+        "sourceSymbol": "http_api_storage_callback"
+      },
+      {
+        "sourceFile": "applications/services/state_publisher/subscriptions.c",
+        "sourceSymbol": "state_publisher_collect_all"
+      }
+    ]
+  },
+  "optionalTools": {
+    "cli": {
+      "defaultAddress": "10.0.4.20",
+      "port": 23,
+      "prompt": ">: ",
+      "interruptByte": 3,
+      "rebootCommand": "power reboot sw",
+      "commands": [
+        {
+          "name": "uptime",
+          "mode": "buffered",
+          "sourceFile": "applications/services/cli_commands_common/application.fam",
+          "sourceSymbol": "cli_command_uptime"
+        },
+        {
+          "name": "power",
+          "mode": "buffered",
+          "sourceFile": "applications/services/power/application.fam",
+          "sourceSymbol": "power_cli_command"
+        },
+        {
+          "name": "storage",
+          "mode": "buffered",
+          "sourceFile": "applications/services/storage/application.fam",
+          "sourceSymbol": "storage_command"
+        },
+        {
+          "name": "update",
+          "mode": "buffered",
+          "sourceFile": "applications/system/updater/application.fam",
+          "sourceSymbol": "update_cli_command"
+        },
+        {
+          "name": "input",
+          "mode": "buffered",
+          "sourceFile": "applications/services/input/application.fam",
+          "sourceSymbol": "input_cli_command"
+        },
+        {
+          "name": "loader",
+          "mode": "buffered",
+          "sourceFile": "applications/services/loader/application.fam",
+          "sourceSymbol": "loader_cli_command"
+        },
+        {
+          "name": "top",
+          "mode": "stream",
+          "sourceFile": "applications/services/cli_commands_common/application.fam",
+          "sourceSymbol": "cli_command_top"
+        },
+        {
+          "name": "free",
+          "mode": "buffered",
+          "sourceFile": "applications/services/cli_commands_common/application.fam",
+          "sourceSymbol": "cli_command_free"
+        },
+        {
+          "name": "free_blocks",
+          "mode": "buffered",
+          "sourceFile": "applications/services/cli_commands_common/application.fam",
+          "sourceSymbol": "cli_command_free_blocks"
+        },
+        {
+          "name": "log",
+          "mode": "stream",
+          "sourceFile": "applications/services/cli_commands_common/application.fam",
+          "sourceSymbol": "cli_command_log"
+        },
+        {
+          "name": "echo",
+          "mode": "buffered",
+          "sourceFile": "applications/services/cli_commands_common/application.fam",
+          "sourceSymbol": "cli_command_echo"
+        },
+        {
+          "name": "device_info",
+          "mode": "buffered",
+          "sourceFile": "applications/services/device_info/application.fam",
+          "sourceSymbol": "cli_command_device_info"
+        },
+        {
+          "name": "date",
+          "mode": "buffered",
+          "sourceFile": "applications/services/time/application.fam",
+          "sourceSymbol": "cli_command_date"
+        },
+        {
+          "name": "timezone",
+          "mode": "buffered",
+          "sourceFile": "applications/services/time/application.fam",
+          "sourceSymbol": "cli_command_timezone"
+        },
+        {
+          "name": "matter",
+          "mode": "buffered",
+          "sourceFile": "applications/services/matter/application.fam",
+          "sourceSymbol": "matter_cli_command"
+        },
+        {
+          "name": "audio",
+          "mode": "buffered",
+          "sourceFile": "applications/services/audio/application.fam",
+          "sourceSymbol": "cli_command_audio"
+        },
+        {
+          "name": "display",
+          "mode": "buffered",
+          "sourceFile": "applications/services/brightness_control/application.fam",
+          "sourceSymbol": "cli_command_display"
+        },
+        {
+          "name": "sysctl",
+          "mode": "buffered",
+          "sourceFile": "applications/services/sysctl/application.fam",
+          "sourceSymbol": "cli_command_sysctl"
+        },
+        {
+          "name": "log_dump",
+          "mode": "buffered",
+          "sourceFile": "applications/services/log_storage/application.fam",
+          "sourceSymbol": "log_storage_cli_command_entry"
+        }
+      ],
+      "sourceReferences": [
+        {
+          "sourceFile": "applications/services/cli_socket/cli_socket.c",
+          "sourceSymbol": "CLI_SOCKET_PORT"
+        },
+        {
+          "sourceFile": "applications/services/usb_network/settings/usb_network_settings_interface_v1.c",
+          "sourceSymbol": ".bytes = {10, 0, 4, 20}"
+        },
+        {
+          "sourceFile": "lib/cli/shell/cli_shell_line.c",
+          "sourceSymbol": "\"%s>: \""
+        },
+        {
+          "sourceFile": "applications/services/power/power_cli.c",
+          "sourceSymbol": "power_cli_reboot"
+        }
+      ]
+    },
+    "media": {
+      "image": {
+        "outputFormat": "PNG",
+        "decoder": "LODEPNG",
+        "frontMaxWidth": 72,
+        "frontMaxHeight": 16,
+        "backMaxWidth": 160,
+        "backMaxHeight": 80
+      },
+      "audio": {
+        "header": "none",
+        "channels": 1,
+        "sampleRateHz": 44100,
+        "bitsPerSample": 16,
+        "byteOrder": "little_endian",
+        "outputExtension": ".snd"
+      },
+      "sourceReferences": [
+        {
+          "sourceFile": "targets/f21/config/lv_conf.h",
+          "sourceSymbol": "LV_USE_LODEPNG"
+        },
+        {
+          "sourceFile": "applications/services/web_server/http_api/api_display.c",
+          "sourceSymbol": "api_display_validate_image"
+        },
+        {
+          "sourceFile": "applications/services/audio/audio.c",
+          "sourceSymbol": "AUDIO_SAMPLE_RATE"
+        },
+        {
+          "sourceFile": "applications/services/audio/audio.h",
+          "sourceSymbol": "audio_play_file"
+        }
+      ]
+    }
+  },
   "operations": [
     {
       "method": "GET",
