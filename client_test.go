@@ -94,7 +94,7 @@ func TestRemoteModePreservesCanonicalPathAndDoesNotInjectAuth(t *testing.T) {
 		if got := r.Header.Get("X-API-Token"); got != "" {
 			t.Fatalf("X-API-Token = %q, want absent", got)
 		}
-		if got := r.Header.Get("X-API-Sem-Ver"); got != "24.4.0" {
+		if got := r.Header.Get("X-API-Sem-Ver"); got != "25.0.0" {
 			t.Fatalf("X-API-Sem-Ver = %q", got)
 		}
 		writeJSON(t, w, map[string]string{"ok": "true"})
@@ -110,7 +110,7 @@ func TestRemoteModePreservesCanonicalPathAndDoesNotInjectAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("24.4.0")
+	client.setCachedAPISemVerForTest("25.0.0")
 
 	if _, err := client.Do(context.Background(), Request{
 		Method:       "GET",
@@ -199,10 +199,10 @@ func TestVersionCacheAndSemVerHeader(t *testing.T) {
 			if got := r.Header.Get("X-API-Sem-Ver"); got != "" {
 				t.Fatalf("version request X-API-Sem-Ver = %q", got)
 			}
-			writeJSON(t, w, map[string]string{"api_semver": "24.4.0"})
+			writeJSON(t, w, map[string]string{"api_semver": "25.0.0"})
 		case "/api/status":
 			statusCalls++
-			if got := r.Header.Get("X-API-Sem-Ver"); got != "24.4.0" {
+			if got := r.Header.Get("X-API-Sem-Ver"); got != "25.0.0" {
 				t.Fatalf("status request X-API-Sem-Ver = %q", got)
 			}
 			writeJSON(t, w, map[string]string{"status": "ok"})
@@ -302,7 +302,7 @@ func TestCompatibilityRetryRejectsNonRepeatableBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/version":
-			writeJSON(t, w, map[string]string{"api_semver": "24.4.0"})
+			writeJSON(t, w, map[string]string{"api_semver": "25.0.0"})
 		case "/api/storage/write":
 			uploadCalls++
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -488,7 +488,7 @@ func TestStreamedCompatibilityRetryReturnsBodyReadError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("24.4.0")
+	client.setCachedAPISemVerForTest("25.0.0")
 
 	var out bytes.Buffer
 	n, err := client.Storage().ReadTo(context.Background(), "/ext/payload.bin", &out)
@@ -532,7 +532,7 @@ func TestProgressBodyReportsKnownAndUnknownTotals(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewClient: %v", err)
 		}
-		client.setCachedAPISemVerForTest("24.4.0")
+		client.setCachedAPISemVerForTest("25.0.0")
 
 		err = client.Storage().Write(context.Background(), WriteStorageFileRequest{
 			Path: "/ext/payload.bin",
@@ -575,7 +575,7 @@ func TestProgressBodyReportsKnownAndUnknownTotals(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewClient: %v", err)
 		}
-		client.setCachedAPISemVerForTest("24.4.0")
+		client.setCachedAPISemVerForTest("25.0.0")
 
 		err = client.Storage().Write(context.Background(), WriteStorageFileRequest{
 			Path: "/ext/payload.bin",
@@ -619,7 +619,7 @@ func TestProgressBodyReportsKnownAndUnknownTotals(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewClient: %v", err)
 		}
-		client.setCachedAPISemVerForTest("24.4.0")
+		client.setCachedAPISemVerForTest("25.0.0")
 
 		err = client.Assets().Upload(context.Background(), UploadAssetRequest{
 			ApplicationName: "app",
@@ -665,7 +665,7 @@ func TestResponseModesAndProtocolError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/version":
-			writeJSON(t, w, map[string]string{"api_semver": "24.4.0"})
+			writeJSON(t, w, map[string]string{"api_semver": "25.0.0"})
 		case "/api/screen":
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte{1, 2, 3})
@@ -745,7 +745,7 @@ func TestResponseModeTextDoesNotValidateJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("24.4.0")
+	client.setCachedAPISemVerForTest("25.0.0")
 
 	resp, err := client.Do(context.Background(), Request{
 		Method:       "GET",
@@ -764,7 +764,7 @@ func TestAPIErrorPreservesRequestContextAndExcerpt(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/version":
-			writeJSON(t, w, map[string]string{"api_semver": "24.4.0"})
+			writeJSON(t, w, map[string]string{"api_semver": "25.0.0"})
 		case "/api/display/draw":
 			w.Header().Set("X-Request-ID", "device-rid")
 			w.WriteHeader(http.StatusConflict)
@@ -833,7 +833,7 @@ func TestTransportRetryUsesRepeatableBodiesOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("24.4.0")
+	client.setCachedAPISemVerForTest("25.0.0")
 
 	if _, err := client.Do(context.Background(), Request{
 		Method:       "POST",
@@ -860,7 +860,7 @@ func TestTransportRetryUsesRepeatableBodiesOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient non-repeatable: %v", err)
 	}
-	client.setCachedAPISemVerForTest("24.4.0")
+	client.setCachedAPISemVerForTest("25.0.0")
 
 	_, err = client.Do(context.Background(), Request{
 		Method:       "POST",
@@ -934,7 +934,7 @@ func TestAPISemVerCoalescesConcurrentFirstUse(t *testing.T) {
 		case "/api/version":
 			versionCalls.Add(1)
 			time.Sleep(20 * time.Millisecond)
-			writeJSON(t, w, map[string]string{"api_semver": "24.4.0"})
+			writeJSON(t, w, map[string]string{"api_semver": "25.0.0"})
 		case "/api/status":
 			writeJSON(t, w, map[string]string{"status": "ok"})
 		default:
@@ -1048,7 +1048,7 @@ func TestContextCancellationReturnsRequestError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("24.4.0")
+	client.setCachedAPISemVerForTest("25.0.0")
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer cancel()

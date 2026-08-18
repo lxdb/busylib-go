@@ -58,7 +58,7 @@ func TestDeviceRoundTripUsesFirmwareHTTPTopicAndCorrelation(t *testing.T) {
 		}
 		transport.deliver(Message{
 			Topic:   message.Properties.ResponseTopic,
-			Payload: []byte("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 23\r\n\r\n{\"api_semver\":\"24.4.0\"}"),
+			Payload: []byte("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 23\r\n\r\n{\"api_semver\":\"25.0.0\"}"),
 			QoS:     QoSAtLeastOnce,
 			Properties: Properties{
 				CorrelationData: append([]byte(nil), message.Properties.CorrelationData...),
@@ -81,7 +81,7 @@ func TestDeviceRoundTripUsesFirmwareHTTPTopicAndCorrelation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
-	if response.StatusCode != http.StatusOK || string(response.Body) != `{"api_semver":"24.4.0"}` {
+	if response.StatusCode != http.StatusOK || string(response.Body) != `{"api_semver":"25.0.0"}` {
 		t.Fatalf("response = %#v", response)
 	}
 

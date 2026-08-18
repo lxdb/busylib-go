@@ -3,6 +3,7 @@ package busylib
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -71,25 +72,25 @@ func serviceRequestCases(t *testing.T) []serviceRequestCase {
 				if err != nil {
 					return err
 				}
-				if got.APISemVer != "24.4.0" {
+				if got.APISemVer != "25.0.0" {
 					t.Fatalf("APISemVer = %q", got.APISemVer)
 				}
 				return nil
 			},
 			method:   http.MethodGet,
 			path:     "/api/version",
-			response: `{"api_semver":"24.4.0"}`,
+			response: `{"api_semver":"25.0.0"}`,
 		},
 		jsonGetCase("system status", "/api/status", func(ctx context.Context, client *Client) error {
 			got, err := client.System().Status(ctx)
 			if err != nil {
 				return err
 			}
-			if got.System.APISemVer != "24.4.0" {
+			if got.System.APISemVer != "25.0.0" {
 				t.Fatalf("system api_semver = %q", got.System.APISemVer)
 			}
 			return nil
-		}, `{"system":{"api_semver":"24.4.0","uptime":"00d","boot_time":1,"auto_update_enabled":true}}`),
+		}, `{"system":{"api_semver":"25.0.0","uptime":"00d","boot_time":1,"auto_update_enabled":true}}`),
 		jsonGetCase("system device status", "/api/status/device", func(ctx context.Context, client *Client) error {
 			_, err := client.System().DeviceStatus(ctx)
 			return err
@@ -101,7 +102,7 @@ func serviceRequestCases(t *testing.T) []serviceRequestCase {
 		jsonGetCase("system system status", "/api/status/system", func(ctx context.Context, client *Client) error {
 			_, err := client.System().SystemStatus(ctx)
 			return err
-		}, `{"api_semver":"24.4.0","uptime":"00d","boot_time":1,"auto_update_enabled":true}`),
+		}, `{"api_semver":"25.0.0","uptime":"00d","boot_time":1,"auto_update_enabled":true}`),
 		jsonGetCase("system power status", "/api/status/power", func(ctx context.Context, client *Client) error {
 			_, err := client.System().PowerStatus(ctx)
 			return err
@@ -111,12 +112,21 @@ func serviceRequestCases(t *testing.T) []serviceRequestCase {
 			return err
 		}, `{"type":"usb"}`),
 		{
-			name:     "system dump log",
-			call:     func(ctx context.Context, client *Client) error { return client.System().DumpLog(ctx, "/ext/dump.log") },
+			name: "system dump log",
+			call: func(ctx context.Context, client *Client) error {
+				got, err := client.System().DumpLog(ctx, "physical_test")
+				if err != nil {
+					return err
+				}
+				if got.Result != "OK" || got.Path != "/ext/physical_test.txt" {
+					t.Fatalf("DumpLog response = %#v", got)
+				}
+				return nil
+			},
 			method:   http.MethodPost,
 			path:     "/api/log_dump",
-			query:    "path=%2Fext%2Fdump.log",
-			response: "",
+			query:    "filename=physical_test",
+			response: `{"result":"OK","path":"/ext/physical_test.txt"}`,
 		},
 		jsonGetCase("settings access", "/api/access", func(ctx context.Context, client *Client) error {
 			_, err := client.Settings().HTTPAccess(ctx)
@@ -166,7 +176,7 @@ func serviceRequestCases(t *testing.T) []serviceRequestCase {
 			method:   http.MethodGet,
 			path:     "/api/screen",
 			query:    "display=1",
-			response: "\x01\x02\x03",
+			response: "AQID",
 		},
 		successJSONCase("audio play", http.MethodPost, "/api/audio/play", "", `{"application_name":"app","path":"tone.snd"}`, func(ctx context.Context, client *Client) error {
 			return client.Audio().Play(ctx, PlayAudio{ApplicationName: "app", Path: "tone.snd"})
@@ -321,7 +331,7 @@ func TestHTTPServicesSendExpectedRequests(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewClient: %v", err)
 			}
-			client.setCachedAPISemVerForTest("24.4.0")
+			client.setCachedAPISemVerForTest("25.0.0")
 
 			if err := tc.call(ctx, client); err != nil {
 				t.Fatalf("service call: %v", err)
@@ -736,7 +746,7 @@ func TestAudioHelperMethodsSendDocumentedPayloads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("24.4.0")
+	client.setCachedAPISemVerForTest("25.0.0")
 
 	if err := client.Audio().PlayAsset(ctx, "app", "tone.snd"); err != nil {
 		t.Fatalf("PlayAsset: %v", err)
@@ -774,8 +784,8 @@ func TestDisplayGlobalClearAndFrontScreenFetch(t *testing.T) {
 				return &http.Response{
 					StatusCode: http.StatusOK,
 					Status:     http.StatusText(http.StatusOK),
-					Header:     http.Header{"Content-Type": []string{"application/octet-stream"}},
-					Body:       io.NopCloser(bytes.NewReader([]byte{1, 2, 3})),
+					Header:     http.Header{"Content-Type": []string{"image/bmp"}},
+					Body:       io.NopCloser(strings.NewReader("AQID")),
 				}, nil
 			default:
 				t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
@@ -786,7 +796,7 @@ func TestDisplayGlobalClearAndFrontScreenFetch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("24.4.0")
+	client.setCachedAPISemVerForTest("25.0.0")
 
 	if err := client.Display().Clear(context.Background(), ""); err != nil {
 		t.Fatalf("Clear global: %v", err)
@@ -813,14 +823,14 @@ func TestDisplayScreenFrameDecodesHTTPResponse(t *testing.T) {
 				StatusCode: http.StatusOK,
 				Status:     http.StatusText(http.StatusOK),
 				Header:     http.Header{"Content-Type": []string{"application/octet-stream"}},
-				Body:       io.NopCloser(bytes.NewReader(raw)),
+				Body:       io.NopCloser(strings.NewReader(base64.StdEncoding.EncodeToString(raw))),
 			}, nil
 		})}),
 	)
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("24.4.0")
+	client.setCachedAPISemVerForTest("25.0.0")
 
 	payload, err := client.Display().Screen(context.Background(), 0)
 	if err != nil {
@@ -836,6 +846,30 @@ func TestDisplayScreenFrameDecodesHTTPResponse(t *testing.T) {
 	}
 	if pixel := rgba.RGBAAt(0, 0); pixel.R != 0x33 || pixel.G != 0x22 || pixel.B != 0x11 || pixel.A != 0xff {
 		t.Fatalf("first pixel = %#v", pixel)
+	}
+}
+
+func TestDisplayScreenRejectsInvalidFirmwareBase64Payload(t *testing.T) {
+	client, err := NewClient(
+		WithBaseURL("http://busybar.local"),
+		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Status:     http.StatusText(http.StatusOK),
+				Header:     http.Header{"Content-Type": []string{"image/bmp"}},
+				Body:       io.NopCloser(strings.NewReader("not base64")),
+			}, nil
+		})}),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	client.setCachedAPISemVerForTest("25.0.0")
+
+	_, err = client.Display().Screen(context.Background(), 0)
+	var protocolErr *ProtocolError
+	if !errors.As(err, &protocolErr) {
+		t.Fatalf("Screen error = %T %v, want ProtocolError", err, err)
 	}
 }
 
@@ -905,7 +939,7 @@ func TestPhase5FirmwareErrorsRemainTyped(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewClient: %v", err)
 			}
-			client.setCachedAPISemVerForTest("24.4.0")
+			client.setCachedAPISemVerForTest("25.0.0")
 
 			err = tc.call(context.Background(), client)
 			var apiErr *APIError
@@ -966,7 +1000,7 @@ func TestAssetAndStorageFileHelpersUseRepeatableFileBodiesAndPreserveExtensions(
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("24.4.0")
+	client.setCachedAPISemVerForTest("25.0.0")
 
 	if err := client.Assets().UploadFile(ctx, "app", "asset.bin", localPath); err != nil {
 		t.Fatalf("UploadFile: %v", err)
@@ -1003,7 +1037,7 @@ func TestStorageReadToStreamsResponseAndPreservesAPIErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("24.4.0")
+	client.setCachedAPISemVerForTest("25.0.0")
 
 	var out bytes.Buffer
 	n, err := client.Storage().ReadTo(ctx, "/ext/payload.bin", &out)
@@ -1052,7 +1086,7 @@ func TestStorageResponseModelsMatchFirmwareUnsignedShapes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("24.4.0")
+	client.setCachedAPISemVerForTest("25.0.0")
 
 	list, err := client.Storage().List(context.Background(), "/ext")
 	if err != nil {
@@ -1086,14 +1120,14 @@ func TestServiceValidationRejectsInvalidInputsBeforeNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("24.4.0")
+	client.setCachedAPISemVerForTest("25.0.0")
 	ctx := context.Background()
 
 	checks := []struct {
 		name string
 		call func() error
 	}{
-		{"dump log path", func() error { return client.System().DumpLog(ctx, "/tmp/log") }},
+		{"dump log filename", func() error { _, err := client.System().DumpLog(ctx, "bad/name"); return err }},
 		{"set access key", func() error { return client.Settings().SetHTTPAccess(ctx, HTTPAccessKey, "abc") }},
 		{"set name", func() error { return client.Settings().SetName(ctx, "") }},
 		{"set brightness", func() error { return client.Display().SetBrightness(ctx, "101") }},
@@ -1261,8 +1295,8 @@ func assertServiceRequest(t *testing.T, tc serviceRequestCase, r *http.Request) 
 	if r.URL.RawQuery != tc.query {
 		t.Fatalf("query = %q, want %q", r.URL.RawQuery, tc.query)
 	}
-	if got := r.Header.Get("X-API-Sem-Ver"); got != "24.4.0" && tc.path != "/api/version" {
-		t.Fatalf("X-API-Sem-Ver = %q, want 24.4.0", got)
+	if got := r.Header.Get("X-API-Sem-Ver"); got != "25.0.0" && tc.path != "/api/version" {
+		t.Fatalf("X-API-Sem-Ver = %q, want 25.0.0", got)
 	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {

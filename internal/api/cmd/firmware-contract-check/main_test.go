@@ -82,6 +82,55 @@ data[0] = color.blue;
 	}
 }
 
+func TestCheckLogDumpVerifiesAPI25FilenameAndJSONResponse(t *testing.T) {
+	root := t.TempDir()
+	const source = `
+#define HTTP_API_LOG_DUMP_FILENAME_MAX 64
+int filename_length = mg_http_get_var(&msg->query, "filename", filename, sizeof(filename));
+http_api_log_filename_is_valid(filename, filename_length)
+path_concat(STORAGE_EXT_PATH_PREFIX, filename, full_path_builder);
+furi_string_cat_printf(full_path_builder, ".txt");
+MG_REPLY_OK_BODY(conn, "{\"result\":\"OK\",\"path\":\"%s\"}\n", result_path);
+MG_REPLY_ERROR(conn, 508, "Failed to dump logs.");
+`
+	path := "applications/services/web_server/http_api/api_log.c"
+	writeFirmwareFixture(t, root, map[string]string{path: source})
+
+	if err := checkLogDump(root, make(map[string][]byte)); err != nil {
+		t.Fatalf("checkLogDump: %v", err)
+	}
+
+	drifted := strings.Replace(source, `"filename"`, `"path"`, 1)
+	if err := os.WriteFile(filepath.Join(root, path), []byte(drifted), 0o600); err != nil {
+		t.Fatalf("rewrite log dump fixture: %v", err)
+	}
+	if err := checkLogDump(root, make(map[string][]byte)); err == nil {
+		t.Fatal("checkLogDump accepted the API 24 path query")
+	}
+}
+
+func TestCheckHTTPScreenTransportVerifiesBase64Response(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"applications/services/web_server/http_api/api_streaming.c": `MG_REPLY_IMAGE(conn, frame, frame_size);`,
+		"applications/services/web_server/web_server_i.h":           `#define MG_REPLY_IMAGE(conn, image, size) mg_http_reply(conn, 200, DEFAULT_IMAGE_HEADERS, "%M", mg_print_base64, size, image)`,
+	}
+	writeFirmwareFixture(t, root, files)
+
+	if err := checkHTTPScreenTransport(root, make(map[string][]byte)); err != nil {
+		t.Fatalf("checkHTTPScreenTransport: %v", err)
+	}
+
+	headerPath := filepath.Join(root, "applications/services/web_server/web_server_i.h")
+	drifted := strings.ReplaceAll(files["applications/services/web_server/web_server_i.h"], "mg_print_base64", "mg_print_hex")
+	if err := os.WriteFile(headerPath, []byte(drifted), 0o600); err != nil {
+		t.Fatalf("rewrite web server fixture: %v", err)
+	}
+	if err := checkHTTPScreenTransport(root, make(map[string][]byte)); err == nil {
+		t.Fatal("checkHTTPScreenTransport accepted non-Base64 frame output")
+	}
+}
+
 func TestCheckSnapshotsVerifiesCanonicalKeysAndAllTypedUpdateTags(t *testing.T) {
 	contract, err := internalapi.LoadContractFile("../../testdata/firmware-contract.json")
 	if err != nil {

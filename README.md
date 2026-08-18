@@ -12,7 +12,7 @@ device implementation:
   negotiation, repeatable body handling, typed errors, and firmware-verified
   remote-operation guards
 - Product-oriented typed HTTP service accessors for all 67 synchronous
-  operations audited from BUSY Bar firmware API `24.4.0`
+  operations audited from BUSY Bar F22 firmware API `25.0.0`
 - Firmware-aligned request/response models and validation, including Wi-Fi,
   Matter partial updates, display/path rules, and Busy timer structures
 - Display, asset, storage, and audio helpers for common app workflows
@@ -61,6 +61,14 @@ err = client.Display().Draw(ctx, busylib.DisplayElements{
 		},
 	},
 })
+```
+
+API 25 log dumps accept an optional filename without a path or extension and
+return the created device path. Passing an empty filename uses `/ext/log.txt`:
+
+```go
+dump, err := client.System().DumpLog(ctx, "support")
+// dump.Path is /ext/support.txt on success.
 ```
 
 Phase 5 exposes constructors for common display and audio payloads:
@@ -171,7 +179,9 @@ No local-to-remote fallback is implicit.
 ## Frame Decoding
 
 The `frame` package keeps HTTP and status-stream transport separate from frame
-conversion. Existing client and stream APIs continue to expose their raw data:
+conversion. API 25 returns `/api/screen` pixels Base64-encoded at the HTTP
+layer; `Display.Screen` decodes that transport and returns pixel bytes for
+`frame.FromHTTP`:
 
 ```go
 raw, err := client.Display().Screen(ctx, 0)
@@ -405,9 +415,11 @@ or constants.
 
 The Phase 3 through Phase 10 implementation audit used
 `https://github.com/busy-app/busybar-firmware.git` at commit
-`1add7be4f1fd31cbd0763c4c20add1ff6382232e` (branch `dev`, API `24.4.0`).
+`ac59f45cfcd14f6b0fccb8e8e8f47e183a537aaf` (branch `release`, tag `1.1.1`,
+API `25.0.0`, target F22). F22 inherits the F21 platform configuration where
+the receipt cites files under `targets/f21/`.
 Firmware selects protobuf commit
-`07223321a4ab39a13c5167dbf85c87c418325634`.
+`dba670e2ddb5cda511af997ca5fcb1254e90917f`.
 
 The standalone module keeps independently maintained contract artifacts under
 `internal/`:

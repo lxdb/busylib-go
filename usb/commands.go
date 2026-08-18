@@ -11,7 +11,7 @@ import (
 type sendCommandFunc func(context.Context, string, ...string) (Response, error)
 type streamCommandFunc func(context.Context, io.Writer, string, ...string) error
 
-// Commands exposes the curated production CLI commands registered by the F21
+// Commands exposes the curated production CLI commands registered by the F22
 // firmware. Arguments are passed through after newline and NUL validation.
 type Commands struct {
 	send   sendCommandFunc

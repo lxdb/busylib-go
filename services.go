@@ -2,6 +2,7 @@ package busylib
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"io"
 	"net/http"
@@ -122,17 +123,17 @@ func (s SystemService) Transport(ctx context.Context) (NetworkInterfaceInfo, err
 	return out, err
 }
 
-func (s SystemService) DumpLog(ctx context.Context, path string) error {
-	if path != "" {
-		if err := validateStoragePath("path", path); err != nil {
-			return validationError(http.MethodPost, "/api/log_dump", err.Error(), err)
-		}
+func (s SystemService) DumpLog(ctx context.Context, filename string) (LogDumpResponse, error) {
+	var out LogDumpResponse
+	if err := validateOptionalLogFilename(filename); err != nil {
+		return out, validationError(http.MethodPost, "/api/log_dump", err.Error(), err)
 	}
 	query := url.Values{}
-	if path != "" {
-		query.Set("path", path)
+	if filename != "" {
+		query.Set("filename", filename)
 	}
-	return s.client.doTextSuccess(ctx, http.MethodPost, "/api/log_dump", query, nil)
+	err := s.client.doJSON(ctx, http.MethodPost, "/api/log_dump", query, nil, &out)
+	return out, err
 }
 
 func (s SettingsService) HTTPAccess(ctx context.Context) (HttpAccessInfo, error) {
@@ -202,7 +203,26 @@ func (s DisplayService) Screen(ctx context.Context, display int) ([]byte, error)
 	if err := validateScreenDisplay(display); err != nil {
 		return nil, validationError(http.MethodGet, "/api/screen", err.Error(), err)
 	}
-	return s.client.doBytes(ctx, http.MethodGet, "/api/screen", url.Values{"display": []string{strconv.Itoa(display)}}, nil)
+	response, err := s.client.Do(ctx, Request{
+		Method:       http.MethodGet,
+		Path:         "/api/screen",
+		Query:        url.Values{"display": []string{strconv.Itoa(display)}},
+		ResponseMode: ResponseModeBytes,
+	})
+	if err != nil {
+		return nil, err
+	}
+	decoded, err := base64.StdEncoding.DecodeString(string(response.Body))
+	if err != nil {
+		return nil, &ProtocolError{
+			Method:    http.MethodGet,
+			Path:      "/api/screen",
+			RequestID: response.RequestID,
+			Excerpt:   excerpt(response.Body),
+			Err:       err,
+		}
+	}
+	return decoded, nil
 }
 
 func (s AudioService) Play(ctx context.Context, request PlayAudio) error {
@@ -597,17 +617,6 @@ func (c *Client) doJSON(ctx context.Context, method, path string, query url.Valu
 func (c *Client) doSuccess(ctx context.Context, method, path string, query url.Values, body Body) error {
 	var out SuccessResponse
 	return c.doJSON(ctx, method, path, query, body, &out)
-}
-
-func (c *Client) doTextSuccess(ctx context.Context, method, path string, query url.Values, body Body) error {
-	_, err := c.Do(ctx, Request{
-		Method:       method,
-		Path:         path,
-		Query:        query,
-		Body:         body,
-		ResponseMode: ResponseModeText,
-	})
-	return err
 }
 
 func (c *Client) doBytes(ctx context.Context, method, path string, query url.Values, body Body) ([]byte, error) {

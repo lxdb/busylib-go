@@ -90,7 +90,7 @@ func TestStatusStreamHandshakeMessagesAndSnapshotControl(t *testing.T) {
 	}
 
 	handshake := receiveStreamValue(t, handshakes)
-	if handshake.token != "1234" || handshake.version != "24.4.0" {
+	if handshake.token != "1234" || handshake.version != "25.0.0" {
 		t.Fatalf("query token/version = %q/%q", handshake.token, handshake.version)
 	}
 	if handshake.tokenHeader != "" || handshake.versionHeader != "" {
@@ -721,7 +721,7 @@ func newTestStatusStreamWithOptionsAndClient(
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("24.4.0")
+	client.setCachedAPISemVerForTest("25.0.0")
 	statusStream, err := client.NewStatusStream(streamOptions...)
 	if err != nil {
 		t.Fatalf("NewStatusStream: %v", err)

@@ -26,7 +26,7 @@ func TestCollectCanonicalFirmwareSnapshot(t *testing.T) {
 		paths = append(paths, r.URL.Path)
 		mu.Unlock()
 
-		if r.URL.Path != "/api/version" && r.Header.Get("X-API-Sem-Ver") != "24.4.0" {
+		if r.URL.Path != "/api/version" && r.Header.Get("X-API-Sem-Ver") != "25.0.0" {
 			t.Errorf("%s X-API-Sem-Ver = %q", r.URL.Path, r.Header.Get("X-API-Sem-Ver"))
 		}
 		writeSnapshotResponse(t, w, r.URL.Path)
@@ -45,7 +45,7 @@ func TestCollectCanonicalFirmwareSnapshot(t *testing.T) {
 	if !got.Complete() || got.Empty() {
 		t.Fatalf("complete=%v empty=%v failures=%v", got.Complete(), got.Empty(), got.Failures())
 	}
-	if got.Name.Value != "Desk" || got.Version.Value != "24.4.0" {
+	if got.Name.Value != "Desk" || got.Version.Value != "25.0.0" {
 		t.Fatalf("identity = name %q version %q", got.Name.Value, got.Version.Value)
 	}
 	if !got.Power.Value.Known || got.Power.Value.BatteryStatus != statepb.BatteryStatus_CHARGING || got.Power.Value.BatteryCurrentMA != -125 {
@@ -189,7 +189,7 @@ func TestCollectCancellationReturnsPartialSnapshot(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Collect error = %v, want context.Canceled", err)
 	}
-	if !got.Version.Present || got.Version.Value != "24.4.0" {
+	if !got.Version.Present || got.Version.Value != "25.0.0" {
 		t.Fatalf("partial version = %#v", got.Version)
 	}
 	if got.Name.Err == nil || got.Status.Present {
@@ -210,10 +210,10 @@ func writeSnapshotResponse(t *testing.T, w http.ResponseWriter, path string) {
 	t.Helper()
 	w.Header().Set("Content-Type", "application/json")
 	responses := map[string]string{
-		"/api/version":            `{"api_semver":"24.4.0"}`,
+		"/api/version":            `{"api_semver":"25.0.0"}`,
 		"/api/name":               `{"name":"Desk"}`,
-		"/api/status":             `{"device":{"serial_number":"ABC","usb_mac":"00","otp_valid":true,"firmware_security":"signed"},"firmware":{"version":"1.0.0","target":1,"branch":"dev","build_date":"today","commit_hash":"abc","intercom_version":"1"},"system":{"api_semver":"24.4.0","uptime":"1m","boot_time":1,"auto_update_enabled":true},"power":{"state":"charging","battery_charge":75,"battery_voltage":3800,"battery_current":-125,"usb_voltage":5000}}`,
-		"/api/status/system":      `{"api_semver":"24.4.0","uptime":"1m","boot_time":1,"auto_update_enabled":true}`,
+		"/api/status":             `{"device":{"serial_number":"ABC","usb_mac":"00","otp_valid":true,"firmware_security":"signed"},"firmware":{"version":"1.0.0","target":1,"branch":"dev","build_date":"today","commit_hash":"abc","intercom_version":"1"},"system":{"api_semver":"25.0.0","uptime":"1m","boot_time":1,"auto_update_enabled":true},"power":{"state":"charging","battery_charge":75,"battery_voltage":3800,"battery_current":-125,"usb_voltage":5000}}`,
+		"/api/status/system":      `{"api_semver":"25.0.0","uptime":"1m","boot_time":1,"auto_update_enabled":true}`,
 		"/api/status/power":       `{"state":"charging","battery_charge":75,"battery_voltage":3800,"battery_current":-125,"usb_voltage":5000}`,
 		"/api/time":               `{"timestamp":"2026-07-15T12:30:45-06:00"}`,
 		"/api/wifi/status":        `{"state":"connected","ssid":"Desk","bssid":"11:22:33:44:55:66","channel":6,"rssi":-40,"security":"WPA2","ip_config":{"ip_method":"dhcp","ip_type":"ipv4","address":"192.168.1.20"}}`,

@@ -12,9 +12,10 @@ import (
 )
 
 var (
-	colorPattern      = regexp.MustCompile(`^#[a-fA-F0-9]{8}$`)
-	httpKeyPattern    = regexp.MustCompile(`^[0-9]{4,10}$`)
-	brightnessPattern = regexp.MustCompile(`^(auto|[0-9]{1,2}|100)$`)
+	colorPattern       = regexp.MustCompile(`^#[a-fA-F0-9]{8}$`)
+	httpKeyPattern     = regexp.MustCompile(`^[0-9]{4,10}$`)
+	brightnessPattern  = regexp.MustCompile(`^(auto|[0-9]{1,2}|100)$`)
+	logFilenamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 )
 
 const (
@@ -22,6 +23,7 @@ const (
 	maxAssetParameterBytes   = 31
 	maxDisplayQueryBytes     = 63
 	maxStoragePathBytes      = 63
+	maxLogFilenameBytes      = 63
 	maxUpdateVersionBytes    = 63
 	maxAccountServerURLBytes = 64
 	maxWiFiSSIDBytes         = 33
@@ -597,6 +599,16 @@ func validateStoragePath(field, value string) error {
 	trimmed := strings.TrimSuffix(value, "/")
 	if !strings.HasPrefix(trimmed, "/ext") || !firmwarePathIsSane(trimmed) {
 		return fmt.Errorf("%s must use a sane firmware path under /ext", field)
+	}
+	return nil
+}
+
+func validateOptionalLogFilename(value string) error {
+	if value == "" {
+		return nil
+	}
+	if len(value) > maxLogFilenameBytes || !logFilenamePattern.MatchString(value) {
+		return fmt.Errorf("filename must be 1-%d ASCII letters, digits, underscores, or hyphens", maxLogFilenameBytes)
 	}
 	return nil
 }

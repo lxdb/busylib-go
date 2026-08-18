@@ -6,6 +6,11 @@ type SuccessResponse struct {
 	Result string `json:"result"`
 }
 
+type LogDumpResponse struct {
+	Result string `json:"result"`
+	Path   string `json:"path"`
+}
+
 type VersionInfo struct {
 	APISemVer string `json:"api_semver"`
 }

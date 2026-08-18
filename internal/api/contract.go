@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	ExpectedAPIVersion         = "24.4.0"
+	ExpectedAPIVersion         = "25.0.0"
 	ExpectedOperationCount     = 68
 	ExpectedSyncOperationCount = 67
 	StreamPhase                = 6
@@ -55,6 +55,7 @@ type StatusStreamContract struct {
 
 type FrameContract struct {
 	HTTPPath             string               `json:"httpPath"`
+	HTTPEncoding         string               `json:"httpEncoding"`
 	MaxPayloadBytes      int                  `json:"maxPayloadBytes"`
 	EmittedEncodings     []string             `json:"emittedEncodings"`
 	ProtobufPixelFormats []string             `json:"protobufPixelFormats"`
@@ -295,7 +296,7 @@ func (c StatusStreamContract) Validate() error {
 }
 
 func (c FrameContract) Validate() error {
-	if c.HTTPPath != "/api/screen" || c.MaxPayloadBytes != 16_384 {
+	if c.HTTPPath != "/api/screen" || c.HTTPEncoding != "base64" || c.MaxPayloadBytes != 16_384 {
 		return fmt.Errorf("frame HTTP path or payload limit is invalid")
 	}
 	if !slices.Equal(c.EmittedEncodings, []string{"PLAIN", "RUN_LENGTH"}) {

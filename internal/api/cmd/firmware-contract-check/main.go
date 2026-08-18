@@ -93,13 +93,65 @@ func checkFirmware(root string, contract internalapi.Contract) error {
 	if err := checkFrames(root, contract.Frames, checked); err != nil {
 		return err
 	}
+	if err := checkHTTPScreenTransport(root, checked); err != nil {
+		return err
+	}
 	if err := checkSnapshots(root, contract, checked); err != nil {
 		return err
 	}
 	if err := checkOptionalTools(root, contract.OptionalTools, checked); err != nil {
 		return err
 	}
+	if err := checkLogDump(root, checked); err != nil {
+		return err
+	}
 	return checkRemoteMQTT(root, contract.Remote, checked)
+}
+
+func checkHTTPScreenTransport(root string, checked map[string][]byte) error {
+	const (
+		streamingSource = "applications/services/web_server/http_api/api_streaming.c"
+		webServerHeader = "applications/services/web_server/web_server_i.h"
+	)
+	streamingData, err := readFirmwareFile(root, streamingSource, checked)
+	if err != nil {
+		return err
+	}
+	headerData, err := readFirmwareFile(root, webServerHeader, checked)
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(string(streamingData), "MG_REPLY_IMAGE(conn, frame, frame_size)") {
+		return fmt.Errorf("%s does not return screen frames through MG_REPLY_IMAGE", streamingSource)
+	}
+	if !strings.Contains(string(headerData), "#define MG_REPLY_IMAGE") ||
+		!strings.Contains(string(headerData), "mg_print_base64") {
+		return fmt.Errorf("%s does not encode MG_REPLY_IMAGE bodies as base64", webServerHeader)
+	}
+	return nil
+}
+
+func checkLogDump(root string, checked map[string][]byte) error {
+	const sourceFile = "applications/services/web_server/http_api/api_log.c"
+	data, err := readFirmwareFile(root, sourceFile, checked)
+	if err != nil {
+		return err
+	}
+	markers := []string{
+		"HTTP_API_LOG_DUMP_FILENAME_MAX 64",
+		`mg_http_get_var(&msg->query, "filename"`,
+		"http_api_log_filename_is_valid(filename, filename_length)",
+		"path_concat(STORAGE_EXT_PATH_PREFIX, filename, full_path_builder)",
+		`furi_string_cat_printf(full_path_builder, ".txt")`,
+		`{\"result\":\"OK\",\"path\":\"%s\"}`,
+		`MG_REPLY_ERROR(conn, 508, "Failed to dump logs.")`,
+	}
+	for _, marker := range markers {
+		if !strings.Contains(string(data), marker) {
+			return fmt.Errorf("API 25 log dump marker %q is missing from %s", marker, sourceFile)
+		}
+	}
+	return nil
 }
 
 func checkStatusStream(root string, contract internalapi.StatusStreamContract, checked map[string][]byte) error {

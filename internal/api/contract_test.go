@@ -18,10 +18,10 @@ func TestFirmwareContractReceipt(t *testing.T) {
 		t.Fatalf("load firmware contract: %v", err)
 	}
 
-	if contract.FirmwareCommit != "1add7be4f1fd31cbd0763c4c20add1ff6382232e" {
+	if contract.FirmwareCommit != "ac59f45cfcd14f6b0fccb8e8e8f47e183a537aaf" {
 		t.Fatalf("firmware commit = %q", contract.FirmwareCommit)
 	}
-	if contract.ProtobufCommit != "07223321a4ab39a13c5167dbf85c87c418325634" {
+	if contract.ProtobufCommit != "dba670e2ddb5cda511af997ca5fcb1254e90917f" {
 		t.Fatalf("protobuf commit = %q", contract.ProtobufCommit)
 	}
 	if contract.License != "GPL-2.0-or-later" {
@@ -68,6 +68,9 @@ func TestFirmwareContractFramesMatchDecoderAndSelectedProtobuf(t *testing.T) {
 
 	if contract.Frames.HTTPPath != "/api/screen" || contract.Frames.MaxPayloadBytes != framepkg.MaxPayloadSize {
 		t.Fatalf("frame path/max payload = %q/%d", contract.Frames.HTTPPath, contract.Frames.MaxPayloadBytes)
+	}
+	if contract.Frames.HTTPEncoding != "base64" {
+		t.Fatalf("frame HTTP encoding = %q, want base64", contract.Frames.HTTPEncoding)
 	}
 	if contract.Frames.Front.Screen != int(framepb.Screen_FRONT) ||
 		contract.Frames.Front.Width != framepkg.FrontWidth ||

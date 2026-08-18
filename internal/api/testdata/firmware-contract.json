@@ -1,9 +1,9 @@
 {
   "repository": "https://github.com/busy-app/busybar-firmware.git",
-  "branch": "dev",
-  "firmwareCommit": "1add7be4f1fd31cbd0763c4c20add1ff6382232e",
-  "apiVersion": "24.4.0",
-  "protobufCommit": "07223321a4ab39a13c5167dbf85c87c418325634",
+  "branch": "release",
+  "firmwareCommit": "ac59f45cfcd14f6b0fccb8e8e8f47e183a537aaf",
+  "apiVersion": "25.0.0",
+  "protobufCommit": "dba670e2ddb5cda511af997ca5fcb1254e90917f",
   "license": "GPL-2.0-or-later",
   "statusStream": {
     "path": "/api/status/ws",
@@ -41,6 +41,7 @@
   },
   "frames": {
     "httpPath": "/api/screen",
+    "httpEncoding": "base64",
     "maxPayloadBytes": 16384,
     "emittedEncodings": [
       "PLAIN",
