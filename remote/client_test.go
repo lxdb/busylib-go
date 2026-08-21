@@ -32,6 +32,7 @@ func TestNewClientValidatesFirmwareTopicSegmentsAndOptions(t *testing.T) {
 		{name: "zero timeout", transport: transport, sessionID: "session", options: []Option{WithRequestTimeout(0)}},
 		{name: "fractional lease", transport: transport, sessionID: "session", options: []Option{WithStreamLease(1500 * time.Millisecond)}},
 		{name: "incomplete message limit", transport: transport, sessionID: "session", options: []Option{WithStreamMessageLimit(MessageLimit{MaxCount: 1})}},
+		{name: "zero message bytes", transport: transport, sessionID: "session", options: []Option{WithMaxMessageBytes(0)}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -40,6 +41,66 @@ func TestNewClientValidatesFirmwareTopicSegmentsAndOptions(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHTTPRoundTripHonorsMessageLimit(t *testing.T) {
+	t.Run("outgoing request", func(t *testing.T) {
+		transport := newFakeTransport()
+		client, err := NewClient(
+			transport,
+			"session",
+			WithClientID("request-limit"),
+			WithMaxMessageBytes(32),
+		)
+		if err != nil {
+			t.Fatalf("NewClient: %v", err)
+		}
+		defer func() { _ = client.Close() }()
+
+		_, err = client.Device().Do(context.Background(), busylib.Request{
+			Method:       http.MethodGet,
+			Path:         "/api/version",
+			ResponseMode: busylib.ResponseModeText,
+		})
+		if !errors.Is(err, ErrMessageTooLarge) {
+			t.Fatalf("Do error = %v, want ErrMessageTooLarge", err)
+		}
+		if got := transport.publishedMessages(); len(got) != 0 {
+			t.Fatalf("published oversized request = %#v", got)
+		}
+	})
+
+	t.Run("incoming response", func(t *testing.T) {
+		transport := newFakeTransport()
+		transport.onPublish = func(message Message) {
+			transport.deliver(Message{
+				Topic:   message.Properties.ResponseTopic,
+				Payload: bytes.Repeat([]byte("x"), 129),
+				Properties: Properties{
+					CorrelationData: message.Properties.CorrelationData,
+				},
+			})
+		}
+		client, err := NewClient(
+			transport,
+			"session",
+			WithClientID("response-limit"),
+			WithMaxMessageBytes(128),
+		)
+		if err != nil {
+			t.Fatalf("NewClient: %v", err)
+		}
+		defer func() { _ = client.Close() }()
+
+		_, err = client.Device().Do(context.Background(), busylib.Request{
+			Method:       http.MethodGet,
+			Path:         "/api/version",
+			ResponseMode: busylib.ResponseModeText,
+		})
+		if !errors.Is(err, ErrMessageTooLarge) {
+			t.Fatalf("Do error = %v, want ErrMessageTooLarge", err)
+		}
+	})
 }
 
 func TestDeviceRoundTripUsesFirmwareHTTPTopicAndCorrelation(t *testing.T) {
@@ -70,7 +131,7 @@ func TestDeviceRoundTripUsesFirmwareHTTPTopicAndCorrelation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	response, err := client.Device().Do(context.Background(), busylib.Request{
 		Method:       http.MethodGet,
@@ -107,7 +168,7 @@ func TestDeviceConcurrentRequestsAreCorrelatedOutOfOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	type result struct {
 		body string
@@ -206,7 +267,7 @@ func TestHTTPSubscriptionFailureFailsPendingAndNextRequestResubscribes(t *testin
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	firstDone := make(chan error, 1)
 	go func() {
@@ -257,18 +318,21 @@ func TestHTTPSubscriptionFailureFailsPendingAndNextRequestResubscribes(t *testin
 
 func TestHTTPShutdownPreventsPublicationAfterClose(t *testing.T) {
 	transport := newFakeTransport()
-	roundTripper := newHTTPRoundTripper(transport, "session", "shutdown")
+	roundTripper := newHTTPRoundTripper(transport, "session", "shutdown", DefaultMaxMessageBytes)
 	body := &blockingReadCloser{
 		started: make(chan struct{}),
 		release: make(chan struct{}),
 	}
-	request, err := http.NewRequest(http.MethodPost, syntheticBaseURL+"/api/name", body)
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodPost, syntheticBaseURL+"/api/name", body)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
 	requestDone := make(chan error, 1)
 	go func() {
-		_, err := roundTripper.RoundTrip(request)
+		response, err := roundTripper.RoundTrip(request)
+		if response != nil {
+			_ = response.Body.Close()
+		}
 		requestDone <- err
 	}()
 	<-body.started
@@ -302,6 +366,7 @@ type fakeTransport struct {
 	requests             []SubscriptionRequest
 	published            []Message
 	publishCh            chan Message
+	subscribeCh          chan struct{}
 	onPublish            func(Message)
 	subscriptionCloseErr error
 	closed               bool
@@ -325,6 +390,7 @@ func newFakeTransport() *fakeTransport {
 	return &fakeTransport{
 		subscribers: make(map[string][]*fakeSubscription),
 		publishCh:   make(chan Message, 32),
+		subscribeCh: make(chan struct{}, 32),
 	}
 }
 
@@ -347,6 +413,7 @@ func (f *fakeTransport) Subscribe(_ context.Context, request SubscriptionRequest
 	f.requests = append(f.requests, request)
 	f.subscribers[request.Topic] = append(f.subscribers[request.Topic], subscription)
 	f.mu.Unlock()
+	f.subscribeCh <- struct{}{}
 	return subscription, nil
 }
 

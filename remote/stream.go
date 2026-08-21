@@ -16,14 +16,15 @@ const remoteMessageBuffer = 64
 var errRemoteConsumerTooSlow = errors.New("remote status stream consumer is too slow")
 
 type statusStream struct {
-	transport     Transport
-	requestTopic  string
-	responseTopic string
-	lease         time.Duration
-	startPayload  []byte
-	timeout       time.Duration
-	options       publicstream.Options
-	release       func(*statusStream)
+	transport       Transport
+	requestTopic    string
+	responseTopic   string
+	lease           time.Duration
+	startPayload    []byte
+	timeout         time.Duration
+	maxMessageBytes int64
+	options         publicstream.Options
+	release         func(*statusStream)
 
 	messages chan publicstream.Message
 	statuses chan publicstream.Status
@@ -63,18 +64,19 @@ func newStatusStream(transport Transport, config clientConfig, options []publics
 		}
 	}
 	stream := &statusStream{
-		transport:     transport,
-		requestTopic:  "sessions/" + config.sessionID + "/down/v1/stream-request",
-		responseTopic: "sessions/" + config.sessionID + "/up/v1/stream-response/" + config.clientID,
-		lease:         config.streamLease,
-		startPayload:  payload,
-		timeout:       config.requestTimeout,
-		options:       resolved,
-		release:       release,
-		messages:      make(chan publicstream.Message, remoteMessageBuffer),
-		statuses:      make(chan publicstream.Status, 1),
-		errors:        make(chan error, 1),
-		done:          make(chan struct{}),
+		transport:       transport,
+		requestTopic:    "sessions/" + config.sessionID + "/down/v1/stream-request",
+		responseTopic:   "sessions/" + config.sessionID + "/up/v1/stream-response/" + config.clientID,
+		lease:           config.streamLease,
+		startPayload:    payload,
+		timeout:         config.requestTimeout,
+		maxMessageBytes: config.maxMessageBytes,
+		options:         resolved,
+		release:         release,
+		messages:        make(chan publicstream.Message, remoteMessageBuffer),
+		statuses:        make(chan publicstream.Status, 1),
+		errors:          make(chan error, 1),
+		done:            make(chan struct{}),
 		status: publicstream.Status{
 			Lifecycle: publicstream.LifecycleIdle,
 			Access:    publicstream.AccessUnknown,
@@ -270,6 +272,17 @@ func (s *statusStream) readSubscription(ctx context.Context, subscription Subscr
 			}
 			if result.message.Topic != s.responseTopic {
 				continue
+			}
+			if int64(len(result.message.Payload)) > s.maxMessageBytes {
+				return remoteReadResult{
+					err: &publicstream.Error{
+						Operation: "receive",
+						Path:      s.responseTopic,
+						Terminal:  true,
+						Err:       ErrMessageTooLarge,
+					},
+					terminal: true,
+				}
 			}
 			message, fatal := statusdecode.DecodeBinary(result.message.Payload, s.responseTopic)
 			if message.State != nil && message.DecodeError == nil {

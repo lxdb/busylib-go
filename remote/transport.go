@@ -6,8 +6,11 @@ import "context"
 type QoS byte
 
 const (
-	QoSAtMostOnce  QoS = 0
+	// QoSAtMostOnce requests delivery without acknowledgment or retry.
+	QoSAtMostOnce QoS = 0
+	// QoSAtLeastOnce requests acknowledged delivery with possible duplicates.
 	QoSAtLeastOnce QoS = 1
+	// QoSExactlyOnce requests acknowledged delivery without duplicates.
 	QoSExactlyOnce QoS = 2
 )
 

@@ -9,6 +9,8 @@ import (
 const (
 	defaultRequestTimeout = 10 * time.Second
 	defaultStreamLease    = 60 * time.Second
+	// DefaultMaxMessageBytes bounds MQTT payloads copied in memory.
+	DefaultMaxMessageBytes int64 = 1 << 20
 )
 
 // MessageLimit configures the firmware stream publisher's packet rate.
@@ -28,12 +30,25 @@ type clientConfig struct {
 	requestSessionID string
 	streamLease      time.Duration
 	streamLimit      MessageLimit
+	maxMessageBytes  int64
 }
 
 func defaultConfig() clientConfig {
 	return clientConfig{
-		requestTimeout: defaultRequestTimeout,
-		streamLease:    defaultStreamLease,
+		requestTimeout:  defaultRequestTimeout,
+		streamLease:     defaultStreamLease,
+		maxMessageBytes: DefaultMaxMessageBytes,
+	}
+}
+
+// WithMaxMessageBytes changes the maximum MQTT payload size.
+func WithMaxMessageBytes(maximum int64) Option {
+	return func(config *clientConfig) error {
+		if maximum <= 0 {
+			return errors.New("remote maximum message size must be greater than zero")
+		}
+		config.maxMessageBytes = maximum
+		return nil
 	}
 }
 

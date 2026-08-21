@@ -23,7 +23,7 @@ func TestRemoteStatusStreamUsesFirmwareLeaseAndSharedDecoder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	statusStream, err := client.NewStatusStream(publicstream.WithStaleAfter(100 * time.Millisecond))
 	if err != nil {
@@ -89,6 +89,44 @@ func TestRemoteStatusStreamUsesFirmwareLeaseAndSharedDecoder(t *testing.T) {
 	}
 }
 
+func TestRemoteStatusStreamRejectsOversizedMessages(t *testing.T) {
+	transport := newFakeTransport()
+	client, err := NewClient(
+		transport,
+		"firmware-session",
+		WithClientID("bounded-stream"),
+		WithMaxMessageBytes(4),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	statusStream, err := client.NewStatusStream()
+	if err != nil {
+		t.Fatalf("NewStatusStream: %v", err)
+	}
+	if err := statusStream.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	topic := "sessions/firmware-session/up/v1/stream-response/bounded-stream"
+	transport.waitPublished(t, 1)
+	transport.deliver(Message{Topic: topic, Payload: []byte("12345")})
+
+	select {
+	case streamErr := <-statusStream.Errors():
+		if !errors.Is(streamErr, ErrMessageTooLarge) {
+			t.Fatalf("stream error = %v, want ErrMessageTooLarge", streamErr)
+		}
+		var typed *publicstream.Error
+		if !errors.As(streamErr, &typed) || !typed.Terminal || typed.Operation != "receive" {
+			t.Fatalf("stream error = %#v, want terminal receive error", streamErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("oversized stream message did not stop the stream")
+	}
+}
+
 func TestRemoteStatusStreamRateLimitAndSingleActiveStream(t *testing.T) {
 	transport := newFakeTransport()
 	client, err := NewClient(
@@ -100,7 +138,7 @@ func TestRemoteStatusStreamRateLimitAndSingleActiveStream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	first, err := client.NewStatusStream()
 	if err != nil {
@@ -134,7 +172,7 @@ func TestRemoteStatusStreamReconnectsAfterSubscriptionFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	statusStream, err := client.NewStatusStream(publicstream.WithReconnectPolicy(publicstream.ReconnectPolicy{MaxAttempts: 2, Delay: 0}))
 	if err != nil {
 		t.Fatalf("NewStatusStream: %v", err)
@@ -261,12 +299,15 @@ func (f *fakeTransport) closeLatestSubscription(t *testing.T, topic string) {
 
 func (f *fakeTransport) waitSubscriptions(t *testing.T, count int) {
 	t.Helper()
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
+	deadline := time.After(time.Second)
+	for {
 		if len(f.subscriptionRequests()) >= count {
 			return
 		}
-		time.Sleep(time.Millisecond)
+		select {
+		case <-f.subscribeCh:
+		case <-deadline:
+			t.Fatalf("subscriptions = %d, want %d", len(f.subscriptionRequests()), count)
+		}
 	}
-	t.Fatalf("subscriptions = %d, want %d", len(f.subscriptionRequests()), count)
 }

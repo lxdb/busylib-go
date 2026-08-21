@@ -15,9 +15,10 @@ type httpResult struct {
 }
 
 type httpRoundTripper struct {
-	transport     Transport
-	requestTopic  string
-	responseTopic string
+	transport       Transport
+	requestTopic    string
+	responseTopic   string
+	maxMessageBytes int64
 
 	mu           sync.Mutex
 	subscription Subscription
@@ -28,12 +29,13 @@ type httpRoundTripper struct {
 	closeErr     error
 }
 
-func newHTTPRoundTripper(transport Transport, sessionID, clientID string) *httpRoundTripper {
+func newHTTPRoundTripper(transport Transport, sessionID, clientID string, maxMessageBytes int64) *httpRoundTripper {
 	return &httpRoundTripper{
-		transport:     transport,
-		requestTopic:  "sessions/" + sessionID + "/down/v1/http-request",
-		responseTopic: "sessions/" + sessionID + "/up/v1/http-response/" + clientID,
-		pending:       make(map[string]chan httpResult),
+		transport:       transport,
+		requestTopic:    "sessions/" + sessionID + "/down/v1/http-request",
+		responseTopic:   "sessions/" + sessionID + "/up/v1/http-response/" + clientID,
+		maxMessageBytes: maxMessageBytes,
+		pending:         make(map[string]chan httpResult),
 	}
 }
 
@@ -46,7 +48,7 @@ func (r *httpRoundTripper) RoundTrip(request *http.Request) (*http.Response, err
 	}
 	defer r.inflight.Done()
 	if request.Body != nil {
-		defer request.Body.Close()
+		defer func() { _ = request.Body.Close() }()
 	}
 	subscription, err := r.ensureSubscription(request.Context())
 	if err != nil {
@@ -68,8 +70,11 @@ func (r *httpRoundTripper) RoundTrip(request *http.Request) (*http.Response, err
 		}
 	}()
 
-	var payload bytes.Buffer
-	if err := request.Write(&payload); err != nil {
+	payload := &messageBuffer{maximum: r.maxMessageBytes}
+	if err := request.Write(payload); err != nil {
+		if errors.Is(err, ErrMessageTooLarge) {
+			return nil, &Error{Operation: "encode HTTP", Route: request.URL.Path, Err: ErrMessageTooLarge}
+		}
 		return nil, &Error{Operation: "encode HTTP", Route: request.URL.Path, Err: err}
 	}
 	message := Message{
@@ -180,10 +185,32 @@ func (r *httpRoundTripper) receive(subscription Subscription) {
 		}
 		r.mu.Unlock()
 		if result != nil {
-			result <- httpResult{message: cloneTransportMessage(message)}
+			if int64(len(message.Payload)) > r.maxMessageBytes {
+				result <- httpResult{err: &Error{Operation: "receive HTTP", Route: r.responseTopic, Err: ErrMessageTooLarge}}
+			} else {
+				result <- httpResult{message: cloneTransportMessage(message)}
+			}
 		}
 	}
 }
+
+type messageBuffer struct {
+	buffer  bytes.Buffer
+	maximum int64
+}
+
+func (b *messageBuffer) Write(data []byte) (int, error) {
+	remaining := b.maximum - int64(b.buffer.Len())
+	if int64(len(data)) <= remaining {
+		return b.buffer.Write(data)
+	}
+	if remaining > 0 {
+		_, _ = b.buffer.Write(data[:int(remaining)])
+	}
+	return int(max(remaining, 0)), ErrMessageTooLarge
+}
+
+func (b *messageBuffer) Bytes() []byte { return b.buffer.Bytes() }
 
 func (r *httpRoundTripper) subscriptionFailed(subscription Subscription, err error) {
 	r.mu.Lock()

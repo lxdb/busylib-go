@@ -55,12 +55,13 @@ func NewClient(transport Transport, sessionID string, options ...Option) (*Clien
 	}
 	config.sessionID = sessionID
 
-	httpTransport := newHTTPRoundTripper(transport, sessionID, config.clientID)
+	httpTransport := newHTTPRoundTripper(transport, sessionID, config.clientID, config.maxMessageBytes)
 	rootOptions := []busylib.Option{
 		busylib.WithEndpointMode(busylib.EndpointRemote),
 		busylib.WithBaseURL(syntheticBaseURL),
 		busylib.WithHTTPClient(&http.Client{Transport: httpTransport}),
 		busylib.WithTimeout(config.requestTimeout),
+		busylib.WithMaxResponseBytes(config.maxMessageBytes),
 	}
 	if config.requestSessionID != "" {
 		rootOptions = append(rootOptions, busylib.WithSessionID(config.requestSessionID))
