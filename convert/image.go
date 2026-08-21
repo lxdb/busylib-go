@@ -2,6 +2,7 @@ package convert
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -16,6 +17,43 @@ import (
 	framepkg "github.com/lxdb/busylib-go/frame"
 )
 
+const (
+	// DefaultMaxInputBytes bounds encoded image data buffered in memory.
+	DefaultMaxInputBytes int64 = 32 << 20
+	// DefaultMaxSourcePixels bounds decoded source image dimensions.
+	DefaultMaxSourcePixels int64 = 4096 * 4096
+)
+
+type imageConfig struct {
+	maxInputBytes   int64
+	maxSourcePixels int64
+}
+
+// Option configures image conversion.
+type Option func(*imageConfig) error
+
+// WithMaxInputBytes changes the encoded image input limit.
+func WithMaxInputBytes(maximum int64) Option {
+	return func(config *imageConfig) error {
+		if maximum <= 0 {
+			return errors.New("maximum image input size must be greater than zero")
+		}
+		config.maxInputBytes = maximum
+		return nil
+	}
+}
+
+// WithMaxSourcePixels changes the decoded source pixel limit.
+func WithMaxSourcePixels(maximum int64) Option {
+	return func(config *imageConfig) error {
+		if maximum <= 0 {
+			return errors.New("maximum source pixel count must be greater than zero")
+		}
+		config.maxSourcePixels = maximum
+		return nil
+	}
+}
+
 // ImageResult is an owned PNG payload and its prepared dimensions.
 type ImageResult struct {
 	Data         []byte
@@ -28,7 +66,19 @@ type ImageResult struct {
 // Image decodes PNG, JPEG, or static GIF input, bilinearly downsizes it when
 // necessary, center-crops it to the selected display's maximum dimensions,
 // and returns a PNG payload. Images are never upscaled.
-func Image(source io.Reader, target busylib.DisplayTarget) (ImageResult, error) {
+func Image(source io.Reader, target busylib.DisplayTarget, options ...Option) (ImageResult, error) {
+	config := imageConfig{
+		maxInputBytes:   DefaultMaxInputBytes,
+		maxSourcePixels: DefaultMaxSourcePixels,
+	}
+	for _, option := range options {
+		if option == nil {
+			continue
+		}
+		if err := option(&config); err != nil {
+			return ImageResult{}, conversionError("configure", "", err)
+		}
+	}
 	maximumWidth, maximumHeight, err := targetDimensions(target)
 	if err != nil {
 		return ImageResult{}, conversionError("prepare", "", err)
@@ -36,11 +86,18 @@ func Image(source io.Reader, target busylib.DisplayTarget) (ImageResult, error) 
 	if source == nil {
 		return ImageResult{}, conversionError("read", "", ErrInvalidImage)
 	}
-	data, err := io.ReadAll(source)
-	if err != nil {
-		return ImageResult{}, conversionError("read", "", fmt.Errorf("%w: %v", ErrInvalidImage, err))
+	reader := io.Reader(source)
+	if config.maxInputBytes < math.MaxInt64 {
+		reader = io.LimitReader(source, config.maxInputBytes+1)
 	}
-	decoded, sourceFormat, err := decodeImage(data)
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return ImageResult{}, conversionError("read", "", fmt.Errorf("%w: %w", ErrInvalidImage, err))
+	}
+	if int64(len(data)) > config.maxInputBytes {
+		return ImageResult{}, conversionError("read", "", ErrInputTooLarge)
+	}
+	decoded, sourceFormat, err := decodeImage(data, config.maxSourcePixels)
 	if err != nil {
 		return ImageResult{}, err
 	}
@@ -63,42 +120,115 @@ func Image(source io.Reader, target busylib.DisplayTarget) (ImageResult, error) 
 }
 
 // ImageFile prepares an image read from path.
-func ImageFile(path string, target busylib.DisplayTarget) (ImageResult, error) {
+func ImageFile(path string, target busylib.DisplayTarget, options ...Option) (ImageResult, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return ImageResult{}, conversionError("open", "", err)
 	}
-	defer file.Close()
-	return Image(file, target)
+	defer func() { _ = file.Close() }()
+	return Image(file, target, options...)
 }
 
-func decodeImage(data []byte) (image.Image, string, error) {
+func decodeImage(data []byte, maxSourcePixels int64) (image.Image, string, error) {
 	configuration, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
-		return nil, "", conversionError("decode", "", fmt.Errorf("%w: %v", ErrUnsupportedFormat, err))
+		return nil, "", conversionError("decode", "", fmt.Errorf("%w: %w", ErrUnsupportedFormat, err))
 	}
 	if configuration.Width <= 0 || configuration.Height <= 0 {
 		return nil, format, conversionError("decode", format, ErrInvalidImage)
+	}
+	if int64(configuration.Width) > maxSourcePixels/int64(configuration.Height) {
+		return nil, format, conversionError("decode", format, ErrSourceImageTooLarge)
 	}
 	switch format {
 	case "png", "jpeg":
 		decoded, _, err := image.Decode(bytes.NewReader(data))
 		if err != nil {
-			return nil, format, conversionError("decode", format, fmt.Errorf("%w: %v", ErrInvalidImage, err))
+			return nil, format, conversionError("decode", format, fmt.Errorf("%w: %w", ErrInvalidImage, err))
 		}
 		return decoded, format, nil
 	case "gif":
-		decoded, err := gif.DecodeAll(bytes.NewReader(data))
+		frameCount, err := gifFrameCount(data)
 		if err != nil {
-			return nil, format, conversionError("decode", format, fmt.Errorf("%w: %v", ErrInvalidImage, err))
+			return nil, format, conversionError("decode", format, fmt.Errorf("%w: %w", ErrInvalidImage, err))
 		}
-		if len(decoded.Image) != 1 {
+		if frameCount != 1 {
 			return nil, format, conversionError("decode", format, ErrAnimatedImage)
 		}
-		return decoded.Image[0], format, nil
+		decoded, err := gif.Decode(bytes.NewReader(data))
+		if err != nil {
+			return nil, format, conversionError("decode", format, fmt.Errorf("%w: %w", ErrInvalidImage, err))
+		}
+		return decoded, format, nil
 	default:
 		return nil, format, conversionError("decode", format, ErrUnsupportedFormat)
 	}
+}
+
+func gifFrameCount(data []byte) (int, error) {
+	if len(data) < 13 || (string(data[:6]) != "GIF87a" && string(data[:6]) != "GIF89a") {
+		return 0, ErrInvalidImage
+	}
+	index := 13
+	if data[10]&0x80 != 0 {
+		index += 3 * (1 << ((data[10] & 0x07) + 1))
+	}
+	frames := 0
+	for index < len(data) {
+		switch data[index] {
+		case 0x2c:
+			frames++
+			if frames > 1 {
+				return frames, nil
+			}
+			if index+10 > len(data) {
+				return 0, io.ErrUnexpectedEOF
+			}
+			packed := data[index+9]
+			index += 10
+			if packed&0x80 != 0 {
+				index += 3 * (1 << ((packed & 0x07) + 1))
+			}
+			if index >= len(data) {
+				return 0, io.ErrUnexpectedEOF
+			}
+			index++
+			next, err := skipGIFSubBlocks(data, index)
+			if err != nil {
+				return 0, err
+			}
+			index = next
+		case 0x21:
+			if index+2 > len(data) {
+				return 0, io.ErrUnexpectedEOF
+			}
+			next, err := skipGIFSubBlocks(data, index+2)
+			if err != nil {
+				return 0, err
+			}
+			index = next
+		case 0x3b:
+			return frames, nil
+		default:
+			return 0, ErrInvalidImage
+		}
+	}
+	return 0, io.ErrUnexpectedEOF
+}
+
+func skipGIFSubBlocks(data []byte, index int) (int, error) {
+	for index < len(data) {
+		size := int(data[index])
+		index++
+		if size == 0 {
+			return index, nil
+		}
+		if size > len(data)-index {
+			return 0, io.ErrUnexpectedEOF
+		}
+		index += size
+	}
+	return 0, io.ErrUnexpectedEOF
 }
 
 func targetDimensions(target busylib.DisplayTarget) (int, int, error) {
