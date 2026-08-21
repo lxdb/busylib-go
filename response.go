@@ -6,14 +6,19 @@ import (
 	"net/http"
 )
 
+// ResponseMode selects how Client buffers and validates a response body.
 type ResponseMode string
 
 const (
-	ResponseModeJSON  ResponseMode = "json"
+	// ResponseModeJSON requires a valid JSON response body.
+	ResponseModeJSON ResponseMode = "json"
+	// ResponseModeBytes accepts any response body as bytes.
 	ResponseModeBytes ResponseMode = "bytes"
-	ResponseModeText  ResponseMode = "text"
+	// ResponseModeText accepts any response body as text bytes.
+	ResponseModeText ResponseMode = "text"
 )
 
+// Response contains one buffered device response and its request context.
 type Response struct {
 	Method     string
 	Path       string
@@ -23,6 +28,7 @@ type Response struct {
 	Body       []byte
 }
 
+// DecodeJSON decodes Body into target and returns ProtocolError on failure.
 func (r *Response) DecodeJSON(target any) error {
 	if err := json.Unmarshal(r.Body, target); err != nil {
 		return &ProtocolError{

@@ -51,7 +51,7 @@ func TestPrepareAppliesLocalAuthRequestIDAndSession(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	prepared, err := client.Prepare(context.Background(), Request{
+	prepared, err := client.Prepare(Request{
 		Method: "GET",
 		Path:   "/api/status",
 		Query: url.Values{
@@ -85,17 +85,23 @@ func TestPrepareAppliesLocalAuthRequestIDAndSession(t *testing.T) {
 
 func TestRemoteModePreservesCanonicalPathAndDoesNotInjectAuth(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/version" {
+			writeJSON(t, w, map[string]string{"api_semver": "25.0.0"})
+			return
+		}
 		if r.URL.Path != "/api/status" {
-			t.Fatalf("path = %q", r.URL.Path)
+			t.Errorf("path = %q", r.URL.Path)
+			http.NotFound(w, r)
+			return
 		}
 		if got := r.Header.Get("Authorization"); got != "" {
-			t.Fatalf("Authorization = %q, want absent", got)
+			t.Errorf("Authorization = %q, want absent", got)
 		}
 		if got := r.Header.Get("X-API-Token"); got != "" {
-			t.Fatalf("X-API-Token = %q, want absent", got)
+			t.Errorf("X-API-Token = %q, want absent", got)
 		}
 		if got := r.Header.Get("X-API-Sem-Ver"); got != "25.0.0" {
-			t.Fatalf("X-API-Sem-Ver = %q", got)
+			t.Errorf("X-API-Sem-Ver = %q", got)
 		}
 		writeJSON(t, w, map[string]string{"ok": "true"})
 	}))
@@ -110,8 +116,6 @@ func TestRemoteModePreservesCanonicalPathAndDoesNotInjectAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("25.0.0")
-
 	if _, err := client.Do(context.Background(), Request{
 		Method:       "GET",
 		Path:         "/api/status",
@@ -157,7 +161,7 @@ func TestPrepareRejectsConflictingAuthHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("local NewClient: %v", err)
 	}
-	_, err = local.Prepare(context.Background(), Request{
+	_, err = local.Prepare(Request{
 		Method: "GET",
 		Path:   "/api/status",
 		Header: http.Header{
@@ -177,7 +181,7 @@ func TestPrepareRejectsConflictingAuthHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("remote NewClient: %v", err)
 	}
-	_, err = remote.Prepare(context.Background(), Request{
+	_, err = remote.Prepare(Request{
 		Method: "GET",
 		Path:   "/api/status",
 		Header: http.Header{
@@ -197,17 +201,18 @@ func TestVersionCacheAndSemVerHeader(t *testing.T) {
 		case "/api/version":
 			versionCalls++
 			if got := r.Header.Get("X-API-Sem-Ver"); got != "" {
-				t.Fatalf("version request X-API-Sem-Ver = %q", got)
+				t.Errorf("version request X-API-Sem-Ver = %q", got)
 			}
 			writeJSON(t, w, map[string]string{"api_semver": "25.0.0"})
 		case "/api/status":
 			statusCalls++
 			if got := r.Header.Get("X-API-Sem-Ver"); got != "25.0.0" {
-				t.Fatalf("status request X-API-Sem-Ver = %q", got)
+				t.Errorf("status request X-API-Sem-Ver = %q", got)
 			}
 			writeJSON(t, w, map[string]string{"status": "ok"})
 		default:
-			t.Fatalf("unexpected path %q", r.URL.Path)
+			t.Errorf("unexpected path %q", r.URL.Path)
+			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
@@ -251,7 +256,8 @@ func TestCompatibilityRetryRefreshesVersionOnceForRepeatableBody(t *testing.T) {
 			drawCalls++
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
-				t.Fatalf("read body: %v", err)
+				t.Errorf("read body: %v", err)
+				return
 			}
 			bodies = append(bodies, string(body))
 			if drawCalls == 1 {
@@ -260,11 +266,12 @@ func TestCompatibilityRetryRefreshesVersionOnceForRepeatableBody(t *testing.T) {
 				return
 			}
 			if got := r.Header.Get("X-API-Sem-Ver"); got != "24.4.2" {
-				t.Fatalf("retried X-API-Sem-Ver = %q", got)
+				t.Errorf("retried X-API-Sem-Ver = %q", got)
 			}
 			writeJSON(t, w, map[string]string{"draw": "ok"})
 		default:
-			t.Fatalf("unexpected path %q", r.URL.Path)
+			t.Errorf("unexpected path %q", r.URL.Path)
+			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
@@ -308,7 +315,8 @@ func TestCompatibilityRetryRejectsNonRepeatableBody(t *testing.T) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			writeJSON(t, w, map[string]string{"error": "api version mismatch"})
 		default:
-			t.Fatalf("unexpected path %q", r.URL.Path)
+			t.Errorf("unexpected path %q", r.URL.Path)
+			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
@@ -354,11 +362,12 @@ func TestFileBodyCompatibilityRetryReplaysFile(t *testing.T) {
 		case "/api/storage/write":
 			writeCalls++
 			if r.ContentLength != int64(len("file payload")) {
-				t.Fatalf("ContentLength = %d", r.ContentLength)
+				t.Errorf("ContentLength = %d", r.ContentLength)
 			}
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
-				t.Fatalf("read body: %v", err)
+				t.Errorf("read body: %v", err)
+				return
 			}
 			bodies = append(bodies, string(body))
 			if writeCalls == 1 {
@@ -367,11 +376,12 @@ func TestFileBodyCompatibilityRetryReplaysFile(t *testing.T) {
 				return
 			}
 			if got := r.Header.Get("X-API-Sem-Ver"); got != "24.4.2" {
-				t.Fatalf("retried X-API-Sem-Ver = %q", got)
+				t.Errorf("retried X-API-Sem-Ver = %q", got)
 			}
 			writeJSON(t, w, map[string]string{"result": "OK"})
 		default:
-			t.Fatalf("unexpected path %q", r.URL.Path)
+			t.Errorf("unexpected path %q", r.URL.Path)
+			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
@@ -422,7 +432,8 @@ func TestStreamedCompatibilityRetryRefreshesVersionAndCopiesBody(t *testing.T) {
 			}
 			_, _ = w.Write([]byte("streamed payload"))
 		default:
-			t.Fatalf("unexpected path %q", r.URL.Path)
+			t.Errorf("unexpected path %q", r.URL.Path)
+			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
@@ -460,6 +471,7 @@ func TestStreamedCompatibilityRetryReturnsBodyReadError(t *testing.T) {
 	var calls int
 	client, err := NewClient(
 		WithBaseURL("http://busybar.local"),
+		WithVersionNegotiation(VersionNegotiationDisabled),
 		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			calls++
 			switch calls {
@@ -488,8 +500,6 @@ func TestStreamedCompatibilityRetryReturnsBodyReadError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("25.0.0")
-
 	var out bytes.Buffer
 	n, err := client.Storage().ReadTo(context.Background(), "/ext/payload.bin", &out)
 	var requestErr *RequestError
@@ -518,6 +528,7 @@ func TestProgressBodyReportsKnownAndUnknownTotals(t *testing.T) {
 		}
 		client, err := NewClient(
 			WithBaseURL("http://busybar.local"),
+			WithVersionNegotiation(VersionNegotiationDisabled),
 			WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 				body, err := io.ReadAll(r.Body)
 				if err != nil {
@@ -532,8 +543,6 @@ func TestProgressBodyReportsKnownAndUnknownTotals(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewClient: %v", err)
 		}
-		client.setCachedAPISemVerForTest("25.0.0")
-
 		err = client.Storage().Write(context.Background(), WriteStorageFileRequest{
 			Path: "/ext/payload.bin",
 			Body: ProgressBody(BytesBody([]byte("payload"), "application/octet-stream"), func(written, total int64) {
@@ -564,6 +573,7 @@ func TestProgressBodyReportsKnownAndUnknownTotals(t *testing.T) {
 		var lastTotal int64
 		client, err := NewClient(
 			WithBaseURL("http://busybar.local"),
+			WithVersionNegotiation(VersionNegotiationDisabled),
 			WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 				_, err := io.ReadAll(r.Body)
 				if err != nil {
@@ -575,8 +585,6 @@ func TestProgressBodyReportsKnownAndUnknownTotals(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewClient: %v", err)
 		}
-		client.setCachedAPISemVerForTest("25.0.0")
-
 		err = client.Storage().Write(context.Background(), WriteStorageFileRequest{
 			Path: "/ext/payload.bin",
 			Body: ProgressBody(ReaderBody(strings.NewReader("stream"), "application/octet-stream"), func(_, total int64) {
@@ -596,6 +604,7 @@ func TestProgressBodyReportsKnownAndUnknownTotals(t *testing.T) {
 		attempts := 0
 		client, err := NewClient(
 			WithBaseURL("http://busybar.local"),
+			WithVersionNegotiation(VersionNegotiationDisabled),
 			WithRetryPolicy(RetryPolicy{MaxAttempts: 2}),
 			WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 				attempts++
@@ -619,8 +628,6 @@ func TestProgressBodyReportsKnownAndUnknownTotals(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewClient: %v", err)
 		}
-		client.setCachedAPISemVerForTest("25.0.0")
-
 		err = client.Assets().Upload(context.Background(), UploadAssetRequest{
 			ApplicationName: "app",
 			File:            "payload.bin",
@@ -651,7 +658,7 @@ func TestRemoteBlocklistGuardRejectsBeforeNetwork(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	_, err = client.Prepare(context.Background(), Request{
+	_, err = client.Prepare(Request{
 		Method: http.MethodPost,
 		Path:   "/api/update",
 	})
@@ -673,7 +680,8 @@ func TestResponseModesAndProtocolError(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("{not-json"))
 		default:
-			t.Fatalf("unexpected path %q", r.URL.Path)
+			t.Errorf("unexpected path %q", r.URL.Path)
+			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
@@ -718,7 +726,7 @@ func TestPrepareRejectsUnknownResponseMode(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	_, err = client.Prepare(context.Background(), Request{
+	_, err = client.Prepare(Request{
 		Method:       "GET",
 		Path:         "/api/status",
 		ResponseMode: ResponseMode("xml"),
@@ -732,6 +740,7 @@ func TestPrepareRejectsUnknownResponseMode(t *testing.T) {
 func TestResponseModeTextDoesNotValidateJSON(t *testing.T) {
 	client, err := NewClient(
 		WithBaseURL("http://busybar.local"),
+		WithVersionNegotiation(VersionNegotiationDisabled),
 		WithRequestIDGenerator(fixedRequestID("rid-1")),
 		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{
@@ -745,8 +754,6 @@ func TestResponseModeTextDoesNotValidateJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("25.0.0")
-
 	resp, err := client.Do(context.Background(), Request{
 		Method:       "GET",
 		Path:         "/api/log_dump",
@@ -758,6 +765,96 @@ func TestResponseModeTextDoesNotValidateJSON(t *testing.T) {
 	if string(resp.Body) != "plain text" {
 		t.Fatalf("Body = %q", resp.Body)
 	}
+}
+
+func TestBufferedResponseHonorsConfiguredLimit(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		wantErr error
+	}{
+		{name: "at limit", body: "1234"},
+		{name: "over limit", body: "12345", wantErr: ErrResponseTooLarge},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			body := &trackingReadCloser{Reader: strings.NewReader(test.body)}
+			client, err := NewClient(
+				WithVersionNegotiation(VersionNegotiationDisabled),
+				WithMaxResponseBytes(4),
+				WithHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Header:     make(http.Header),
+						Body:       body,
+					}, nil
+				})}),
+			)
+			if err != nil {
+				t.Fatalf("NewClient: %v", err)
+			}
+
+			response, err := client.Do(context.Background(), Request{
+				Method:       http.MethodGet,
+				Path:         "/api/status",
+				ResponseMode: ResponseModeText,
+			})
+			if !errors.Is(err, test.wantErr) {
+				t.Fatalf("Do error = %v, want %v", err, test.wantErr)
+			}
+			if test.wantErr == nil && string(response.Body) != test.body {
+				t.Fatalf("Body = %q, want %q", response.Body, test.body)
+			}
+			if !body.closed {
+				t.Fatal("response body was not closed")
+			}
+		})
+	}
+}
+
+func TestWithMaxResponseBytesRejectsNonPositiveValues(t *testing.T) {
+	for _, maximum := range []int64{-1, 0} {
+		if _, err := NewClient(WithMaxResponseBytes(maximum)); err == nil {
+			t.Fatalf("WithMaxResponseBytes(%d) succeeded", maximum)
+		}
+	}
+}
+
+func TestExecutionRejectsNilContextAndMalformedPreparedRequest(t *testing.T) {
+	client, err := NewClient(
+		WithVersionNegotiation(VersionNegotiationDisabled),
+		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return jsonResponse(http.StatusOK, map[string]string{"status": "ok"}), nil
+		})}),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	if _, err := client.Do(nil, Request{Method: http.MethodGet, Path: "/api/status"}); err == nil { //nolint:staticcheck // Verifies nil rejection.
+		t.Fatal("Do accepted a nil context")
+	}
+	if _, err := client.DoPrepared(context.Background(), &PreparedRequest{}); err == nil {
+		t.Fatal("DoPrepared accepted a malformed prepared request")
+	}
+	prepared, err := client.Prepare(Request{Method: http.MethodGet, Path: "/api/status"})
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	prepared.Header = nil
+	if _, err := client.DoPrepared(context.Background(), prepared); err != nil {
+		t.Fatalf("DoPrepared with cleared exported header: %v", err)
+	}
+}
+
+type trackingReadCloser struct {
+	io.Reader
+	closed bool
+}
+
+func (r *trackingReadCloser) Close() error {
+	r.closed = true
+	return nil
 }
 
 func TestAPIErrorPreservesRequestContextAndExcerpt(t *testing.T) {
@@ -773,7 +870,8 @@ func TestAPIErrorPreservesRequestContextAndExcerpt(t *testing.T) {
 				"code":  409,
 			})
 		default:
-			t.Fatalf("unexpected path %q", r.URL.Path)
+			t.Errorf("unexpected path %q", r.URL.Path)
+			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
@@ -817,6 +915,7 @@ func TestTransportRetryUsesRepeatableBodiesOnly(t *testing.T) {
 	attempts := 0
 	client, err := NewClient(
 		WithBaseURL("http://busybar.local"),
+		WithVersionNegotiation(VersionNegotiationDisabled),
 		WithRetryPolicy(RetryPolicy{MaxAttempts: 2}),
 		WithRequestIDGenerator(fixedRequestID("rid-1")),
 		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -833,8 +932,6 @@ func TestTransportRetryUsesRepeatableBodiesOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("25.0.0")
-
 	if _, err := client.Do(context.Background(), Request{
 		Method:       "POST",
 		Path:         "/api/storage/write",
@@ -850,6 +947,7 @@ func TestTransportRetryUsesRepeatableBodiesOnly(t *testing.T) {
 	attempts = 0
 	client, err = NewClient(
 		WithBaseURL("http://busybar.local"),
+		WithVersionNegotiation(VersionNegotiationDisabled),
 		WithRetryPolicy(RetryPolicy{MaxAttempts: 2}),
 		WithRequestIDGenerator(fixedRequestID("rid-1")),
 		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
@@ -860,8 +958,6 @@ func TestTransportRetryUsesRepeatableBodiesOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient non-repeatable: %v", err)
 	}
-	client.setCachedAPISemVerForTest("25.0.0")
-
 	_, err = client.Do(context.Background(), Request{
 		Method:       "POST",
 		Path:         "/api/storage/write",
@@ -894,7 +990,8 @@ func TestDoPreparedDoesNotMutatePreparedHeaders(t *testing.T) {
 			}
 			writeJSON(t, w, map[string]string{"draw": "ok"})
 		default:
-			t.Fatalf("unexpected path %q", r.URL.Path)
+			t.Errorf("unexpected path %q", r.URL.Path)
+			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
@@ -906,7 +1003,7 @@ func TestDoPreparedDoesNotMutatePreparedHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	prepared, err := client.Prepare(context.Background(), Request{
+	prepared, err := client.Prepare(Request{
 		Method:       "POST",
 		Path:         "/api/display/draw",
 		Body:         JSONBody(map[string]string{"application_name": "app"}),
@@ -929,16 +1026,21 @@ func TestDoPreparedDoesNotMutatePreparedHeaders(t *testing.T) {
 
 func TestAPISemVerCoalescesConcurrentFirstUse(t *testing.T) {
 	var versionCalls atomic.Int32
+	versionStarted := make(chan struct{})
+	releaseVersion := make(chan struct{})
+	var signalVersion sync.Once
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/version":
 			versionCalls.Add(1)
-			time.Sleep(20 * time.Millisecond)
+			signalVersion.Do(func() { close(versionStarted) })
+			<-releaseVersion
 			writeJSON(t, w, map[string]string{"api_semver": "25.0.0"})
 		case "/api/status":
 			writeJSON(t, w, map[string]string{"status": "ok"})
 		default:
-			t.Fatalf("unexpected path %q", r.URL.Path)
+			t.Errorf("unexpected path %q", r.URL.Path)
+			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
@@ -953,10 +1055,14 @@ func TestAPISemVerCoalescesConcurrentFirstUse(t *testing.T) {
 
 	var wg sync.WaitGroup
 	errs := make(chan error, 8)
+	ready := make(chan struct{}, 8)
+	start := make(chan struct{})
 	for i := 0; i < 8; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			ready <- struct{}{}
+			<-start
 			_, err := client.Do(context.Background(), Request{
 				Method:       "GET",
 				Path:         "/api/status",
@@ -965,6 +1071,12 @@ func TestAPISemVerCoalescesConcurrentFirstUse(t *testing.T) {
 			errs <- err
 		}()
 	}
+	for i := 0; i < 8; i++ {
+		<-ready
+	}
+	close(start)
+	<-versionStarted
+	close(releaseVersion)
 	wg.Wait()
 	close(errs)
 	for err := range errs {
@@ -981,7 +1093,9 @@ func TestRefreshAPISemVerForcesVersionRequest(t *testing.T) {
 	var versionCalls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/version" {
-			t.Fatalf("unexpected path %q", r.URL.Path)
+			t.Errorf("unexpected path %q", r.URL.Path)
+			http.NotFound(w, r)
+			return
 		}
 		versionCalls++
 		writeJSON(t, w, map[string]string{"api_semver": "24.4." + string(rune('0'+versionCalls))})
@@ -1039,6 +1153,7 @@ func TestVersionNegotiationCanBeDisabled(t *testing.T) {
 func TestContextCancellationReturnsRequestError(t *testing.T) {
 	client, err := NewClient(
 		WithBaseURL("http://busybar.local"),
+		WithVersionNegotiation(VersionNegotiationDisabled),
 		WithRequestIDGenerator(fixedRequestID("rid-1")),
 		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			<-r.Context().Done()
@@ -1048,8 +1163,6 @@ func TestContextCancellationReturnsRequestError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("25.0.0")
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer cancel()
 
@@ -1102,7 +1215,7 @@ func writeJSON(t *testing.T, w http.ResponseWriter, payload any) {
 	t.Helper()
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
-		t.Fatalf("write json: %v", err)
+		t.Errorf("write json: %v", err)
 	}
 }
 

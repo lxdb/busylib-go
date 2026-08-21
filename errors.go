@@ -10,6 +10,11 @@ import (
 
 const maxErrorExcerpt = 256
 
+// ErrResponseTooLarge reports a response that exceeds the configured buffer limit.
+var ErrResponseTooLarge = errors.New("response exceeds the configured buffer limit")
+
+// APIError reports a non-success response returned by the device API.
+// Payload preserves a decoded JSON error body when one is available.
 type APIError struct {
 	Method      string
 	Path        string
@@ -21,6 +26,7 @@ type APIError struct {
 	Payload     map[string]any
 }
 
+// Error returns the request context and the device-provided failure message.
 func (e *APIError) Error() string {
 	message := e.DeviceError
 	if message == "" {
@@ -32,6 +38,7 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("%s %s failed: %s (status=%d)", e.Method, e.Path, message, e.StatusCode)
 }
 
+// RequestError reports a transport failure after all permitted attempts.
 type RequestError struct {
 	Method    string
 	Path      string
@@ -40,6 +47,7 @@ type RequestError struct {
 	Err       error
 }
 
+// Error returns the request context, attempt count, and transport cause.
 func (e *RequestError) Error() string {
 	if e.RequestID != "" {
 		return fmt.Sprintf("%s %s request failed after %d attempt(s): %v (request_id=%s)", e.Method, e.Path, e.Attempts, e.Err, e.RequestID)
@@ -47,10 +55,12 @@ func (e *RequestError) Error() string {
 	return fmt.Sprintf("%s %s request failed after %d attempt(s): %v", e.Method, e.Path, e.Attempts, e.Err)
 }
 
+// Unwrap returns the transport cause.
 func (e *RequestError) Unwrap() error {
 	return e.Err
 }
 
+// ProtocolError reports a response that does not match the expected format.
 type ProtocolError struct {
 	Method    string
 	Path      string
@@ -59,6 +69,7 @@ type ProtocolError struct {
 	Err       error
 }
 
+// Error returns the request context and payload failure.
 func (e *ProtocolError) Error() string {
 	if e.Err == nil {
 		return fmt.Sprintf("%s %s returned an invalid payload", e.Method, e.Path)
@@ -66,10 +77,12 @@ func (e *ProtocolError) Error() string {
 	return fmt.Sprintf("%s %s returned an invalid payload: %v", e.Method, e.Path, e.Err)
 }
 
+// Unwrap returns the payload decoding cause.
 func (e *ProtocolError) Unwrap() error {
 	return e.Err
 }
 
+// VersionError reports a failed API version negotiation or compatibility retry.
 type VersionError struct {
 	Method    string
 	Path      string
@@ -78,6 +91,7 @@ type VersionError struct {
 	Err       error
 }
 
+// Error returns the version negotiation failure message.
 func (e *VersionError) Error() string {
 	if e.Message != "" {
 		return e.Message
@@ -88,10 +102,12 @@ func (e *VersionError) Error() string {
 	return "API version negotiation failed"
 }
 
+// Unwrap returns the version discovery or compatibility cause.
 func (e *VersionError) Unwrap() error {
 	return e.Err
 }
 
+// ValidationError reports caller input that was rejected before transport use.
 type ValidationError struct {
 	Method  string
 	Path    string
@@ -99,6 +115,7 @@ type ValidationError struct {
 	Err     error
 }
 
+// Error returns the actionable validation message.
 func (e *ValidationError) Error() string {
 	if e.Message != "" {
 		return e.Message
@@ -109,6 +126,7 @@ func (e *ValidationError) Error() string {
 	return "invalid BUSY Bar request"
 }
 
+// Unwrap returns the underlying validation cause when one exists.
 func (e *ValidationError) Unwrap() error {
 	return e.Err
 }

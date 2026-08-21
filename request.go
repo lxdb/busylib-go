@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	internalapi "github.com/lxdb/busylib-go/internal/api"
 )
 
+// Request describes one BUSY Bar API operation before validation and normalization.
 type Request struct {
 	Method       string
 	Path         string
@@ -38,7 +40,9 @@ type PreparedRequest struct {
 	body *preparedBody
 }
 
-func (c *Client) Prepare(_ context.Context, request Request) (*PreparedRequest, error) {
+// Prepare validates a request and creates a reusable transport-ready value.
+// Each DoPrepared call receives its own copy of mutable request state.
+func (c *Client) Prepare(request Request) (*PreparedRequest, error) {
 	method := strings.ToUpper(strings.TrimSpace(request.Method))
 	if method == "" {
 		return nil, validationError("", request.Path, "request method must not be empty", nil)
@@ -111,8 +115,13 @@ func (c *Client) Prepare(_ context.Context, request Request) (*PreparedRequest, 
 	}, nil
 }
 
+// Do validates, prepares, and executes one API request.
+// The response body is limited by the client's configured maximum size.
 func (c *Client) Do(ctx context.Context, request Request) (*Response, error) {
-	prepared, err := c.Prepare(ctx, request)
+	if ctx == nil {
+		return nil, validationError(request.Method, request.Path, "context must not be nil", nil)
+	}
+	prepared, err := c.Prepare(request)
 	if err != nil {
 		return nil, err
 	}
@@ -120,10 +129,13 @@ func (c *Client) Do(ctx context.Context, request Request) (*Response, error) {
 }
 
 func (c *Client) doStreamTo(ctx context.Context, request Request, writer io.Writer) (*Response, int64, error) {
+	if ctx == nil {
+		return nil, 0, validationError(request.Method, request.Path, "context must not be nil", nil)
+	}
 	if writer == nil {
 		return nil, 0, validationError(request.Method, request.Path, "writer must not be nil", nil)
 	}
-	prepared, err := c.Prepare(ctx, request)
+	prepared, err := c.Prepare(request)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -158,8 +170,17 @@ func (c *Client) doPreparedTo(ctx context.Context, prepared *PreparedRequest, wr
 }
 
 func (c *Client) preparedExecution(ctx context.Context, prepared *PreparedRequest) (context.Context, context.CancelFunc, *executionRequest, error) {
+	if ctx == nil {
+		return ctx, nil, nil, validationError("", "", "context must not be nil", nil)
+	}
 	if prepared == nil {
 		return ctx, nil, nil, validationError("", "", "prepared request must not be nil", nil)
+	}
+	if prepared.URL == nil || prepared.body == nil {
+		return ctx, nil, nil, validationError(prepared.Method, prepared.Path, "prepared request is incomplete", nil)
+	}
+	if _, err := validateResponseMode(prepared.ResponseMode); err != nil {
+		return ctx, nil, nil, validationError(prepared.Method, prepared.Path, "", err)
 	}
 	var cancel context.CancelFunc
 	if c.timeout > 0 {
@@ -167,6 +188,10 @@ func (c *Client) preparedExecution(ctx context.Context, prepared *PreparedReques
 	}
 
 	execution := prepared.executionCopy()
+	if execution.header == nil {
+		execution.header = make(http.Header)
+	}
+	execution.maxResponseBytes = c.maxResponseBytes
 
 	if c.shouldNegotiateVersion(execution) {
 		apiSemVer, err := c.APISemVer(ctx)
@@ -183,25 +208,27 @@ func (c *Client) preparedExecution(ctx context.Context, prepared *PreparedReques
 }
 
 type executionRequest struct {
-	method       string
-	path         string
-	url          *url.URL
-	header       http.Header
-	responseMode ResponseMode
-	requestID    string
-	body         *preparedBody
+	method           string
+	path             string
+	url              *url.URL
+	header           http.Header
+	responseMode     ResponseMode
+	requestID        string
+	body             *preparedBody
+	maxResponseBytes int64
 }
 
 func (p *PreparedRequest) executionCopy() *executionRequest {
 	targetURL := *p.URL
 	return &executionRequest{
-		method:       p.Method,
-		path:         p.Path,
-		url:          &targetURL,
-		header:       p.Header.Clone(),
-		responseMode: p.ResponseMode,
-		requestID:    p.RequestID,
-		body:         p.body,
+		method:           p.Method,
+		path:             p.Path,
+		url:              &targetURL,
+		header:           p.Header.Clone(),
+		responseMode:     p.ResponseMode,
+		requestID:        p.RequestID,
+		body:             p.body,
+		maxResponseBytes: 0,
 	}
 }
 
@@ -330,10 +357,17 @@ func streamResponseTo(writer io.Writer) responseHandler {
 
 func readAndCloseResponseBody(execution *executionRequest, response *http.Response, attempts int) ([]byte, error) {
 	requestID := responseRequestID(response, execution.requestID)
-	body, readErr := io.ReadAll(response.Body)
+	reader := io.Reader(response.Body)
+	if execution.maxResponseBytes < math.MaxInt64 {
+		reader = io.LimitReader(response.Body, execution.maxResponseBytes+1)
+	}
+	body, readErr := io.ReadAll(reader)
 	closeErr := response.Body.Close()
 	if readErr != nil {
 		return nil, requestError(execution, requestID, attempts, readErr)
+	}
+	if int64(len(body)) > execution.maxResponseBytes {
+		return nil, requestError(execution, requestID, attempts, ErrResponseTooLarge)
 	}
 	if closeErr != nil {
 		return nil, requestError(execution, requestID, attempts, closeErr)
@@ -404,7 +438,7 @@ func (c *Client) canRetryCompatibility(execution *executionRequest, statusCode i
 
 func validateCallerAuthHeaders(header http.Header) error {
 	if headerValue(header, "Authorization") != "" {
-		return errors.New("Authorization is not supported; transport authentication must be configured outside busylib.Client")
+		return errors.New("authorization is not supported; transport authentication must be configured outside busylib.Client")
 	}
 	if headerValue(header, headerAPIToken) != "" {
 		return errors.New("X-API-Token must be configured with WithLocalAccessKey")

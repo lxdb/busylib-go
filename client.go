@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+// Client sends local or remote HTTP requests to one BUSY Bar API endpoint.
+// A Client is safe for concurrent use.
 type Client struct {
 	baseURL            *url.URL
 	httpClient         *http.Client
@@ -19,12 +21,15 @@ type Client struct {
 	requestIDGenerator func() string
 	retryPolicy        RetryPolicy
 	versionNegotiation VersionNegotiation
+	maxResponseBytes   int64
 
 	versionMu       sync.Mutex
 	apiSemVer       string
 	versionInFlight *versionRefresh
 }
 
+// NewClient creates a client with the supplied options.
+// It returns an error when an option or endpoint configuration is invalid.
 func NewClient(options ...Option) (*Client, error) {
 	config := defaultClientConfig()
 	for _, option := range options {
@@ -63,17 +68,13 @@ func NewClient(options ...Option) (*Client, error) {
 		requestIDGenerator: config.requestIDGenerator,
 		retryPolicy:        config.retryPolicy,
 		versionNegotiation: config.versionNegotiation,
+		maxResponseBytes:   config.maxResponseBytes,
 	}, nil
 }
 
+// BaseURL returns the normalized HTTP endpoint used by the client.
 func (c *Client) BaseURL() string {
 	return c.baseURL.String()
-}
-
-func (c *Client) setCachedAPISemVerForTest(version string) {
-	c.versionMu.Lock()
-	defer c.versionMu.Unlock()
-	c.apiSemVer = version
 }
 
 func normalizeBaseURL(raw string) (*url.URL, error) {

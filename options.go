@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// DefaultLocalBaseURL is the BUSY Bar USB network endpoint.
 const DefaultLocalBaseURL = "http://10.0.4.20"
 
 const (
@@ -19,25 +20,37 @@ const (
 
 const defaultTimeout = 10 * time.Second
 
+// DefaultMaxResponseBytes bounds responses buffered in memory.
+const DefaultMaxResponseBytes int64 = 1 << 20
+
+// EndpointMode selects local-device or remote-service request rules.
 type EndpointMode string
 
 const (
-	EndpointLocal  EndpointMode = "local"
+	// EndpointLocal sends requests directly to a BUSY Bar.
+	EndpointLocal EndpointMode = "local"
+	// EndpointRemote sends requests through an explicit remote transport.
 	EndpointRemote EndpointMode = "remote"
 )
 
+// VersionNegotiation controls automatic device API version discovery.
 type VersionNegotiation string
 
 const (
-	VersionNegotiationEnabled  VersionNegotiation = "enabled"
+	// VersionNegotiationEnabled adds the discovered API version to requests.
+	VersionNegotiationEnabled VersionNegotiation = "enabled"
+	// VersionNegotiationDisabled sends requests without API version discovery.
 	VersionNegotiationDisabled VersionNegotiation = "disabled"
 )
 
+// RetryPolicy controls retries for repeatable requests.
+// MaxAttempts includes the initial attempt. A value of one disables retries.
 type RetryPolicy struct {
 	MaxAttempts int
 	Backoff     time.Duration
 }
 
+// Option configures a Client during NewClient.
 type Option func(*clientConfig) error
 
 type clientConfig struct {
@@ -52,6 +65,7 @@ type clientConfig struct {
 	requestIDGenerator   func() string
 	retryPolicy          RetryPolicy
 	versionNegotiation   VersionNegotiation
+	maxResponseBytes     int64
 }
 
 func defaultClientConfig() clientConfig {
@@ -65,9 +79,23 @@ func defaultClientConfig() clientConfig {
 			MaxAttempts: 1,
 		},
 		versionNegotiation: VersionNegotiationEnabled,
+		maxResponseBytes:   DefaultMaxResponseBytes,
 	}
 }
 
+// WithMaxResponseBytes changes the maximum response size buffered in memory.
+// Use Storage.ReadTo for larger storage files.
+func WithMaxResponseBytes(maximum int64) Option {
+	return func(config *clientConfig) error {
+		if maximum <= 0 {
+			return errors.New("maximum response size must be greater than zero")
+		}
+		config.maxResponseBytes = maximum
+		return nil
+	}
+}
+
+// WithBaseURL sets the device or remote-service HTTP endpoint.
 func WithBaseURL(baseURL string) Option {
 	return func(config *clientConfig) error {
 		if baseURL == "" {
@@ -79,6 +107,7 @@ func WithBaseURL(baseURL string) Option {
 	}
 }
 
+// WithHTTPClient sets the HTTP client used for all API requests.
 func WithHTTPClient(httpClient *http.Client) Option {
 	return func(config *clientConfig) error {
 		if httpClient == nil {
@@ -90,6 +119,7 @@ func WithHTTPClient(httpClient *http.Client) Option {
 	}
 }
 
+// WithTimeout limits each request when its context has no earlier deadline.
 func WithTimeout(timeout time.Duration) Option {
 	return func(config *clientConfig) error {
 		if timeout < 0 {
@@ -100,6 +130,7 @@ func WithTimeout(timeout time.Duration) Option {
 	}
 }
 
+// WithEndpointMode selects local-device or remote-service request behavior.
 func WithEndpointMode(mode EndpointMode) Option {
 	return func(config *clientConfig) error {
 		switch mode {
@@ -112,6 +143,8 @@ func WithEndpointMode(mode EndpointMode) Option {
 	}
 }
 
+// WithLocalAccessKey adds a local device API token to requests.
+// Remote mode does not accept this option.
 func WithLocalAccessKey(key string) Option {
 	return func(config *clientConfig) error {
 		config.localAccessKey = key
@@ -119,6 +152,7 @@ func WithLocalAccessKey(key string) Option {
 	}
 }
 
+// WithSessionID adds a stable session identifier to requests.
 func WithSessionID(sessionID string) Option {
 	return func(config *clientConfig) error {
 		config.sessionID = sessionID
@@ -126,6 +160,8 @@ func WithSessionID(sessionID string) Option {
 	}
 }
 
+// WithRequestIDGenerator sets the function used when a request has no ID.
+// The function can be called concurrently.
 func WithRequestIDGenerator(generator func() string) Option {
 	return func(config *clientConfig) error {
 		if generator == nil {
@@ -136,6 +172,7 @@ func WithRequestIDGenerator(generator func() string) Option {
 	}
 }
 
+// WithRetryPolicy sets the retry count and backoff for repeatable requests.
 func WithRetryPolicy(policy RetryPolicy) Option {
 	return func(config *clientConfig) error {
 		if policy.MaxAttempts <= 0 {
@@ -149,6 +186,7 @@ func WithRetryPolicy(policy RetryPolicy) Option {
 	}
 }
 
+// WithVersionNegotiation controls automatic API version discovery and headers.
 func WithVersionNegotiation(mode VersionNegotiation) Option {
 	return func(config *clientConfig) error {
 		switch mode {

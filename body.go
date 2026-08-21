@@ -9,6 +9,8 @@ import (
 	"sync"
 )
 
+// Body provides request content and its replay rules to Client.
+// Use the body constructors in this package instead of implementing Body.
 type Body interface {
 	prepareBody() (*preparedBody, error)
 }

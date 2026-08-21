@@ -40,7 +40,7 @@ func TestStatusStreamHandshakeMessagesAndSnapshotControl(t *testing.T) {
 			serverErrors <- err
 			return
 		}
-		defer conn.CloseNow()
+		defer func() { _ = conn.CloseNow() }()
 
 		messageType, control, err := streamRead(conn)
 		if err != nil {
@@ -90,7 +90,7 @@ func TestStatusStreamHandshakeMessagesAndSnapshotControl(t *testing.T) {
 	}
 
 	handshake := receiveStreamValue(t, handshakes)
-	if handshake.token != "1234" || handshake.version != "25.0.0" {
+	if handshake.token != "1234" || handshake.version != "" {
 		t.Fatalf("query token/version = %q/%q", handshake.token, handshake.version)
 	}
 	if handshake.tokenHeader != "" || handshake.versionHeader != "" {
@@ -135,7 +135,7 @@ func TestStatusStreamFrameDecodesToRGBA(t *testing.T) {
 			serverErrors <- err
 			return
 		}
-		defer conn.CloseNow()
+		defer func() { _ = conn.CloseNow() }()
 		if _, _, err := streamRead(conn); err != nil {
 			serverErrors <- err
 			return
@@ -200,7 +200,7 @@ func TestStatusStreamStaleAndFreshRecovery(t *testing.T) {
 			serverErrors <- err
 			return
 		}
-		defer conn.CloseNow()
+		defer func() { _ = conn.CloseNow() }()
 		if _, _, err := streamRead(conn); err != nil {
 			serverErrors <- err
 			return
@@ -255,7 +255,7 @@ func TestStatusStreamReconnectsAndRequestsSnapshotAgain(t *testing.T) {
 			serverErrors <- err
 			return
 		}
-		defer conn.CloseNow()
+		defer func() { _ = conn.CloseNow() }()
 		_, control, err := streamRead(conn)
 		if err != nil {
 			serverErrors <- err
@@ -322,7 +322,7 @@ func TestStatusStreamRefreshesVersionAfterHandshake405(t *testing.T) {
 				serverErrors <- err
 				return
 			}
-			defer conn.CloseNow()
+			defer func() { _ = conn.CloseNow() }()
 			if _, _, err := streamRead(conn); err != nil {
 				serverErrors <- err
 				return
@@ -378,7 +378,7 @@ func TestStatusStreamOmitsVersionQueryWhenNegotiationIsDisabled(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.CloseNow()
+		defer func() { _ = conn.CloseNow() }()
 		_, _, _ = streamRead(conn)
 		<-hold
 	}))
@@ -432,7 +432,7 @@ func TestStatusStreamReconnectExhaustionIsTerminal(t *testing.T) {
 			if err != nil {
 				return
 			}
-			defer conn.CloseNow()
+			defer func() { _ = conn.CloseNow() }()
 			if _, _, err := streamRead(conn); err != nil {
 				return
 			}
@@ -469,7 +469,7 @@ func TestStatusStreamMalformedMessageRecoversAndHandlesPing(t *testing.T) {
 			serverErrors <- err
 			return
 		}
-		defer conn.CloseNow()
+		defer func() { _ = conn.CloseNow() }()
 		if _, _, err := streamRead(conn); err != nil {
 			serverErrors <- err
 			return
@@ -527,7 +527,7 @@ func TestStatusStreamRejectsOversizedMessageAndReconnects(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.CloseNow()
+		defer func() { _ = conn.CloseNow() }()
 		if _, _, err := streamRead(conn); err != nil {
 			return
 		}
@@ -569,7 +569,7 @@ func TestStatusStreamFatalDeviceErrorIsDeliveredThenTerminates(t *testing.T) {
 			serverErrors <- err
 			return
 		}
-		defer conn.CloseNow()
+		defer func() { _ = conn.CloseNow() }()
 		if _, _, err := streamRead(conn); err != nil {
 			serverErrors <- err
 			return
@@ -623,7 +623,7 @@ func TestStatusStreamSlowConsumerFailsWithoutDroppingSilently(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.CloseNow()
+		defer func() { _ = conn.CloseNow() }()
 		if _, _, err := streamRead(conn); err != nil {
 			return
 		}
@@ -653,7 +653,7 @@ func TestStatusStreamStopIsIdempotentAndRemoteIsRejected(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.CloseNow()
+		defer func() { _ = conn.CloseNow() }()
 		_, _, _ = streamRead(conn)
 		<-hold
 	}))
@@ -715,13 +715,13 @@ func newTestStatusStreamWithOptionsAndClient(
 		WithBaseURL(server.URL),
 		WithHTTPClient(server.Client()),
 		WithTimeout(time.Second),
+		WithVersionNegotiation(VersionNegotiationDisabled),
 	}
 	options = append(options, clientOptions...)
 	client, err := NewClient(options...)
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("25.0.0")
 	statusStream, err := client.NewStatusStream(streamOptions...)
 	if err != nil {
 		t.Fatalf("NewStatusStream: %v", err)

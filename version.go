@@ -15,50 +15,50 @@ type versionRefresh struct {
 	err   error
 }
 
+// APISemVer returns the device API semantic version.
+// It caches a successful response and coalesces concurrent first requests.
 func (c *Client) APISemVer(ctx context.Context) (string, error) {
-	for {
-		c.versionMu.Lock()
-		if c.apiSemVer != "" {
-			apiSemVer := c.apiSemVer
-			c.versionMu.Unlock()
-			return apiSemVer, nil
-		}
-		if c.versionInFlight != nil {
-			refresh := c.versionInFlight
-			c.versionMu.Unlock()
-			select {
-			case <-refresh.done:
-				if refresh.err != nil {
-					return "", refresh.err
-				}
-				return refresh.value, nil
-			case <-ctx.Done():
-				return "", versionError("GET", "/api/version", "", "", ctx.Err())
-			}
-		}
-
-		refresh := &versionRefresh{
-			done: make(chan struct{}),
-		}
-		c.versionInFlight = refresh
+	c.versionMu.Lock()
+	if c.apiSemVer != "" {
+		apiSemVer := c.apiSemVer
 		c.versionMu.Unlock()
-
-		value, err := c.fetchAPISemVer(ctx)
-
-		c.versionMu.Lock()
-		if err == nil {
-			c.apiSemVer = value
-		}
-		refresh.value = value
-		refresh.err = err
-		c.versionInFlight = nil
-		close(refresh.done)
-		c.versionMu.Unlock()
-
-		return value, err
+		return apiSemVer, nil
 	}
+	if c.versionInFlight != nil {
+		refresh := c.versionInFlight
+		c.versionMu.Unlock()
+		select {
+		case <-refresh.done:
+			if refresh.err != nil {
+				return "", refresh.err
+			}
+			return refresh.value, nil
+		case <-ctx.Done():
+			return "", versionError("GET", "/api/version", "", "", ctx.Err())
+		}
+	}
+
+	refresh := &versionRefresh{done: make(chan struct{})}
+	c.versionInFlight = refresh
+	c.versionMu.Unlock()
+
+	value, err := c.fetchAPISemVer(ctx)
+
+	c.versionMu.Lock()
+	if err == nil {
+		c.apiSemVer = value
+	}
+	refresh.value = value
+	refresh.err = err
+	c.versionInFlight = nil
+	close(refresh.done)
+	c.versionMu.Unlock()
+
+	return value, err
 }
 
+// RefreshAPISemVer fetches the current device API semantic version and replaces
+// the cached value after a successful response.
 func (c *Client) RefreshAPISemVer(ctx context.Context) (string, error) {
 	value, err := c.fetchAPISemVer(ctx)
 	if err != nil {

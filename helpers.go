@@ -5,8 +5,10 @@ import (
 	"unicode"
 )
 
+// DefaultDisplayPriority is the priority assigned by NewDisplayElements.
 const DefaultDisplayPriority = 50
 
+// NewDisplayElements creates a front-display request with the default priority.
 func NewDisplayElements(applicationName string, elements ...DisplayElement) DisplayElements {
 	return DisplayElements{
 		ApplicationName: applicationName,
@@ -15,6 +17,7 @@ func NewDisplayElements(applicationName string, elements ...DisplayElement) Disp
 	}
 }
 
+// NewTextElement creates a text element for the front display.
 func NewTextElement(id, text string, font Font) TextElement {
 	return TextElement{
 		BaseDisplayElement: defaultDisplayElement(id),
@@ -23,6 +26,7 @@ func NewTextElement(id, text string, font Font) TextElement {
 	}
 }
 
+// NewAssetImageElement creates a front-display image from an uploaded asset.
 func NewAssetImageElement(id, path string) ImageElement {
 	return ImageElement{
 		BaseDisplayElement: defaultDisplayElement(id),
@@ -30,6 +34,7 @@ func NewAssetImageElement(id, path string) ImageElement {
 	}
 }
 
+// NewStockImageElement creates a front-display image from a firmware stock asset.
 func NewStockImageElement(id, stockPath string) ImageElement {
 	return ImageElement{
 		BaseDisplayElement: defaultDisplayElement(id),
@@ -37,6 +42,7 @@ func NewStockImageElement(id, stockPath string) ImageElement {
 	}
 }
 
+// NewAssetAnimationElement creates a front-display animation from an uploaded asset.
 func NewAssetAnimationElement(id, path string) AnimationElement {
 	return AnimationElement{
 		BaseDisplayElement: defaultDisplayElement(id),
@@ -44,6 +50,7 @@ func NewAssetAnimationElement(id, path string) AnimationElement {
 	}
 }
 
+// NewStockAnimationElement creates a front-display animation from a firmware stock asset.
 func NewStockAnimationElement(id, stockPath string) AnimationElement {
 	return AnimationElement{
 		BaseDisplayElement: defaultDisplayElement(id),
@@ -51,6 +58,7 @@ func NewStockAnimationElement(id, stockPath string) AnimationElement {
 	}
 }
 
+// NewCountdownElement creates a front-display countdown with the supplied time settings.
 func NewCountdownElement(id, timestamp string, direction CountdownDirection, showHours CountdownShowHours) CountdownElement {
 	return CountdownElement{
 		BaseDisplayElement: defaultDisplayElement(id),
@@ -60,6 +68,7 @@ func NewCountdownElement(id, timestamp string, direction CountdownDirection, sho
 	}
 }
 
+// NewRectangleElement creates a rectangle for the front display.
 func NewRectangleElement(id string, width, height int) RectangleElement {
 	return RectangleElement{
 		BaseDisplayElement: defaultDisplayElement(id),
@@ -68,6 +77,7 @@ func NewRectangleElement(id string, width, height int) RectangleElement {
 	}
 }
 
+// NewAssetAudio creates a playback request for an uploaded asset.
 func NewAssetAudio(applicationName, path string) PlayAudio {
 	return PlayAudio{
 		ApplicationName: applicationName,
@@ -75,6 +85,7 @@ func NewAssetAudio(applicationName, path string) PlayAudio {
 	}
 }
 
+// NewStockAudio creates a playback request for a firmware stock asset.
 func NewStockAudio(applicationName, stockPath string) PlayAudio {
 	return PlayAudio{
 		ApplicationName: applicationName,
@@ -82,6 +93,8 @@ func NewStockAudio(applicationName, stockPath string) PlayAudio {
 	}
 }
 
+// SanitizeDisplayText removes control characters and unsupported display symbols.
+// It also collapses consecutive white space to one ASCII space.
 func SanitizeDisplayText(value string) string {
 	var builder strings.Builder
 	for _, r := range value {
