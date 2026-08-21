@@ -198,7 +198,7 @@ func TestCollectCancellationReturnsPartialSnapshot(t *testing.T) {
 }
 
 func TestCollectRejectsInvalidSetup(t *testing.T) {
-	if _, err := snapshot.Collect(nil, nil); err == nil {
+	if _, err := snapshot.Collect(nil, nil); err == nil { //nolint:staticcheck // Verifies nil rejection.
 		t.Fatal("Collect(nil, nil) returned nil error")
 	}
 	if _, err := snapshot.Collect(context.Background(), nil); err == nil {

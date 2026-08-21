@@ -53,6 +53,7 @@ func NormalizeColor(value string) (string, error) {
 	return strings.ToUpper(value), nil
 }
 
+// Validate reports whether a display request meets the device API contract.
 func (request DisplayElements) Validate() error {
 	if request.Priority < 0 || request.Priority > 100 {
 		return errors.New("priority must be omitted or between 1 and 100")
@@ -79,6 +80,8 @@ func (request DisplayElements) Validate() error {
 	return nil
 }
 
+// Warnings reports nonfatal display concerns, such as coordinates outside the
+// observed screen bounds. It returns nil when no concerns exist.
 func (request DisplayElements) Warnings() []ValidationWarning {
 	var warnings []ValidationWarning
 	for index, element := range request.Elements {
@@ -106,10 +109,12 @@ func (request DisplayElements) Warnings() []ValidationWarning {
 	return warnings
 }
 
+// Validate reports whether an audio request selects one valid asset source.
 func (request PlayAudio) Validate() error {
 	return validateAssetSource("audio", request.ApplicationName, request.Path, request.StockPath)
 }
 
+// Validate reports whether an asset upload has safe names and a body.
 func (request UploadAssetRequest) Validate() error {
 	if err := validateAssetParameter("application_name", request.ApplicationName); err != nil {
 		return err
@@ -126,6 +131,7 @@ func (request UploadAssetRequest) Validate() error {
 	return nil
 }
 
+// Validate reports whether a storage write has a safe path and a body.
 func (request WriteStorageFileRequest) Validate() error {
 	if err := validateStoragePath("path", request.Path); err != nil {
 		return err
@@ -136,6 +142,7 @@ func (request WriteStorageFileRequest) Validate() error {
 	return nil
 }
 
+// Validate reports whether Wi-Fi connection settings meet the device contract.
 func (request ConnectRequestConfig) Validate() error {
 	if request.SSID == "" {
 		return errors.New("ssid must not be empty")
@@ -174,6 +181,7 @@ func (request ConnectRequestConfig) Validate() error {
 	return nil
 }
 
+// Validate reports whether remote account backend settings are complete and safe.
 func (backend AccountBackend) Validate() error {
 	if strings.TrimSpace(backend.ServerURL) == "" {
 		return errors.New("server_url must not be empty")
@@ -192,6 +200,7 @@ func (backend AccountBackend) Validate() error {
 	return nil
 }
 
+// Validate reports whether a smart-home switch update has supported values.
 func (update SmartHomeSwitchUpdate) Validate() error {
 	if update.State == nil && update.Startup == "" {
 		return errors.New("state or startup must be provided")
@@ -202,7 +211,8 @@ func (update SmartHomeSwitchUpdate) Validate() error {
 	return nil
 }
 
-func (settings AutoupdateSettings) Validate() error {
+// Validate reports whether automatic update settings use a supported schedule.
+func (settings AutoUpdateSettings) Validate() error {
 	if settings.IntervalStart != "" && !validFirmwareClock(settings.IntervalStart) {
 		return errors.New("interval_start must contain an hour from 0-23 and minute from 0-59")
 	}
@@ -212,6 +222,7 @@ func (settings AutoupdateSettings) Validate() error {
 	return nil
 }
 
+// Validate reports whether a busy-state snapshot meets the device contract.
 func (snapshot BusySnapshot) Validate() error {
 	if err := snapshot.Snapshot.BusyBarSettings.Validate(); err != nil {
 		return fieldError("snapshot.busy_bar_settings", err)
@@ -270,6 +281,7 @@ func (snapshot BusySnapshot) Validate() error {
 	}
 }
 
+// Validate reports whether a busy profile has supported display and timer settings.
 func (profile BusyProfile) Validate() error {
 	if profile.SortOrder < math.MinInt32 || profile.SortOrder > math.MaxInt32 {
 		return errors.New("sort_order must fit a signed 32-bit integer")
@@ -286,6 +298,7 @@ func (profile BusyProfile) Validate() error {
 	return profile.BusyBarSettings.Validate()
 }
 
+// Validate reports whether busy timer settings meet their selected timer type.
 func (settings BusyTimerSettings) Validate() error {
 	switch settings.Type {
 	case BusyTimerInfinite:
@@ -310,6 +323,7 @@ func (settings BusyTimerSettings) Validate() error {
 	}
 }
 
+// Validate reports whether interval durations and cycles meet device limits.
 func (settings BusyTimerIntervalSettings) Validate() error {
 	return validateBusyInterval(
 		settings.IntervalWorkMS,
@@ -318,6 +332,7 @@ func (settings BusyTimerIntervalSettings) Validate() error {
 	)
 }
 
+// Validate reports whether busy-bar light settings use valid colors and effects.
 func (settings BusyBarSettings) Validate() error {
 	if len(settings.Theme) > maxBusyThemeBytes {
 		return fmt.Errorf("theme must be at most %d bytes", maxBusyThemeBytes)
@@ -356,9 +371,9 @@ func validateBusyCardID(field, value string) error {
 			}
 			continue
 		}
-		if !((character >= '0' && character <= '9') ||
-			(character >= 'a' && character <= 'f') ||
-			(character >= 'A' && character <= 'F')) {
+		if (character < '0' || character > '9') &&
+			(character < 'a' || character > 'f') &&
+			(character < 'A' || character > 'F') {
 			return fmt.Errorf("%s must be a UUID", field)
 		}
 	}

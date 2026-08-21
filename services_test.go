@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"net/http"
@@ -301,10 +302,10 @@ func serviceRequestCases(t *testing.T) []serviceRequestCase {
 		}, `{"changelog":"fixed things"}`),
 		successCase("update install", http.MethodPost, "/api/update/install", "version=1.2.3", func(ctx context.Context, client *Client) error { return client.Update().Install(ctx, "1.2.3") }, okJSON),
 		successCase("update abort download", http.MethodPost, "/api/update/abort_download", "", func(ctx context.Context, client *Client) error { return client.Update().AbortDownload(ctx) }, okJSON),
-		jsonGetCase("update autoupdate", "/api/update/autoupdate", func(ctx context.Context, client *Client) error { _, err := client.Update().Autoupdate(ctx); return err }, `{"is_enabled":true,"interval_start":"00:00","interval_end":"08:00"}`),
+		jsonGetCase("update autoupdate", "/api/update/autoupdate", func(ctx context.Context, client *Client) error { _, err := client.Update().AutoUpdate(ctx); return err }, `{"is_enabled":true,"interval_start":"00:00","interval_end":"08:00"}`),
 		successJSONCase("update set autoupdate", http.MethodPost, "/api/update/autoupdate", "", `{"is_enabled":true,"interval_start":"00:00","interval_end":"08:00"}`, func(ctx context.Context, client *Client) error {
 			enabled := true
-			return client.Update().SetAutoupdate(ctx, AutoupdateSettings{IsEnabled: &enabled, IntervalStart: "00:00", IntervalEnd: "08:00"})
+			return client.Update().SetAutoUpdate(ctx, AutoUpdateSettings{IsEnabled: &enabled, IntervalStart: "00:00", IntervalEnd: "08:00"})
 		}, okJSON),
 	}
 }
@@ -313,8 +314,9 @@ func TestHTTPServicesSendExpectedRequests(t *testing.T) {
 	ctx := context.Background()
 	for _, tc := range serviceRequestCases(t) {
 		t.Run(tc.name, func(t *testing.T) {
+			requestErr := make(chan error, 1)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assertServiceRequest(t, tc, r)
+				requestErr <- serviceRequestError(tc, r)
 				if tc.responseContentType != "" {
 					w.Header().Set("Content-Type", tc.responseContentType)
 				} else {
@@ -326,15 +328,17 @@ func TestHTTPServicesSendExpectedRequests(t *testing.T) {
 
 			client, err := NewClient(
 				WithBaseURL(server.URL),
+				WithVersionNegotiation(VersionNegotiationDisabled),
 				WithRequestIDGenerator(fixedRequestID("rid-service")),
 			)
 			if err != nil {
 				t.Fatalf("NewClient: %v", err)
 			}
-			client.setCachedAPISemVerForTest("25.0.0")
-
 			if err := tc.call(ctx, client); err != nil {
 				t.Fatalf("service call: %v", err)
+			}
+			if err := <-requestErr; err != nil {
+				t.Fatalf("request contract: %v", err)
 			}
 		})
 	}
@@ -501,11 +505,11 @@ func TestProductValidatorsAcceptDocumentedBoundaries(t *testing.T) {
 	if err := (PlayAudio{ApplicationName: "app", Path: "tone.snd"}).Validate(); err != nil {
 		t.Fatalf("PlayAudio.Validate: %v", err)
 	}
-	if err := (AutoupdateSettings{IntervalStart: "00:00", IntervalEnd: "23:59"}).Validate(); err != nil {
-		t.Fatalf("AutoupdateSettings.Validate: %v", err)
+	if err := (AutoUpdateSettings{IntervalStart: "00:00", IntervalEnd: "23:59"}).Validate(); err != nil {
+		t.Fatalf("AutoUpdateSettings.Validate: %v", err)
 	}
-	if err := (AutoupdateSettings{IntervalStart: "8:00", IntervalEnd: "9:30"}).Validate(); err != nil {
-		t.Fatalf("AutoupdateSettings non-padded firmware clock Validate: %v", err)
+	if err := (AutoUpdateSettings{IntervalStart: "8:00", IntervalEnd: "9:30"}).Validate(); err != nil {
+		t.Fatalf("AutoUpdateSettings non-padded firmware clock Validate: %v", err)
 	}
 	if err := (ConnectRequestConfig{
 		SSID:     "ssid",
@@ -695,7 +699,7 @@ func TestProductValidatorsRejectInvalidInputs(t *testing.T) {
 		{"text invalid font", (DisplayElements{ApplicationName: "app", Priority: DefaultDisplayPriority, Elements: []DisplayElement{TextElement{BaseDisplayElement: BaseDisplayElement{ID: "text"}, Text: "Hi", Font: Font("huge")}}}).Validate()},
 		{"image duplicate source", (DisplayElements{ApplicationName: "app", Priority: DefaultDisplayPriority, Elements: []DisplayElement{ImageElement{BaseDisplayElement: BaseDisplayElement{ID: "image"}, Path: "a.png", StockPath: "shared/a.png"}}}).Validate()},
 		{"audio missing source", (PlayAudio{ApplicationName: "app"}).Validate()},
-		{"autoupdate time", (AutoupdateSettings{IntervalStart: "24:00"}).Validate()},
+		{"autoupdate time", (AutoUpdateSettings{IntervalStart: "24:00"}).Validate()},
 		{"wifi ssid", (ConnectRequestConfig{}).Validate()},
 		{"wifi static ip", (ConnectRequestConfig{SSID: "ssid", Security: WiFiSecurityWPA3, IPConfig: WiFiConnectIPConfig{IPMethod: WiFiIPMethodStatic, Address: "192.0.2.10"}}).Validate()},
 	}
@@ -724,6 +728,7 @@ func TestAudioHelperMethodsSendDocumentedPayloads(t *testing.T) {
 	var index int
 	client, err := NewClient(
 		WithBaseURL("http://busybar.local"),
+		WithVersionNegotiation(VersionNegotiationDisabled),
 		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			if index >= len(calls) {
 				t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
@@ -746,8 +751,6 @@ func TestAudioHelperMethodsSendDocumentedPayloads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("25.0.0")
-
 	if err := client.Audio().PlayAsset(ctx, "app", "tone.snd"); err != nil {
 		t.Fatalf("PlayAsset: %v", err)
 	}
@@ -769,6 +772,7 @@ func TestDisplayGlobalClearAndFrontScreenFetch(t *testing.T) {
 	var calls int
 	client, err := NewClient(
 		WithBaseURL("http://busybar.local"),
+		WithVersionNegotiation(VersionNegotiationDisabled),
 		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			calls++
 			switch calls {
@@ -796,8 +800,6 @@ func TestDisplayGlobalClearAndFrontScreenFetch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("25.0.0")
-
 	if err := client.Display().Clear(context.Background(), ""); err != nil {
 		t.Fatalf("Clear global: %v", err)
 	}
@@ -815,6 +817,7 @@ func TestDisplayScreenFrameDecodesHTTPResponse(t *testing.T) {
 	raw[0], raw[1], raw[2] = 0x11, 0x22, 0x33
 	client, err := NewClient(
 		WithBaseURL("http://busybar.local"),
+		WithVersionNegotiation(VersionNegotiationDisabled),
 		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			if r.Method != http.MethodGet || r.URL.Path != "/api/screen" || r.URL.RawQuery != "display=0" {
 				t.Fatalf("screen request = %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
@@ -830,8 +833,6 @@ func TestDisplayScreenFrameDecodesHTTPResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("25.0.0")
-
 	payload, err := client.Display().Screen(context.Background(), 0)
 	if err != nil {
 		t.Fatalf("Screen: %v", err)
@@ -852,6 +853,7 @@ func TestDisplayScreenFrameDecodesHTTPResponse(t *testing.T) {
 func TestDisplayScreenRejectsInvalidFirmwareBase64Payload(t *testing.T) {
 	client, err := NewClient(
 		WithBaseURL("http://busybar.local"),
+		WithVersionNegotiation(VersionNegotiationDisabled),
 		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -864,8 +866,6 @@ func TestDisplayScreenRejectsInvalidFirmwareBase64Payload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("25.0.0")
-
 	_, err = client.Display().Screen(context.Background(), 0)
 	var protocolErr *ProtocolError
 	if !errors.As(err, &protocolErr) {
@@ -925,6 +925,7 @@ func TestPhase5FirmwareErrorsRemainTyped(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			client, err := NewClient(
 				WithBaseURL("http://busybar.local"),
+				WithVersionNegotiation(VersionNegotiationDisabled),
 				WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 					if r.Method != tc.method || r.URL.Path != tc.path {
 						t.Fatalf("request = %s %s, want %s %s", r.Method, r.URL.Path, tc.method, tc.path)
@@ -939,8 +940,6 @@ func TestPhase5FirmwareErrorsRemainTyped(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewClient: %v", err)
 			}
-			client.setCachedAPISemVerForTest("25.0.0")
-
 			err = tc.call(context.Background(), client)
 			var apiErr *APIError
 			if !errors.As(err, &apiErr) {
@@ -972,6 +971,7 @@ func TestAssetAndStorageFileHelpersUseRepeatableFileBodiesAndPreserveExtensions(
 	var index int
 	client, err := NewClient(
 		WithBaseURL("http://busybar.local"),
+		WithVersionNegotiation(VersionNegotiationDisabled),
 		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			if index >= len(calls) {
 				t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
@@ -1000,8 +1000,6 @@ func TestAssetAndStorageFileHelpersUseRepeatableFileBodiesAndPreserveExtensions(
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("25.0.0")
-
 	if err := client.Assets().UploadFile(ctx, "app", "asset.bin", localPath); err != nil {
 		t.Fatalf("UploadFile: %v", err)
 	}
@@ -1018,6 +1016,7 @@ func TestStorageReadToStreamsResponseAndPreservesAPIErrors(t *testing.T) {
 	var calls int
 	client, err := NewClient(
 		WithBaseURL("http://busybar.local"),
+		WithVersionNegotiation(VersionNegotiationDisabled),
 		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			calls++
 			if r.Method != http.MethodGet || r.URL.Path != "/api/storage/read" || r.URL.RawQuery != "path=%2Fext%2Fpayload.bin" {
@@ -1037,8 +1036,6 @@ func TestStorageReadToStreamsResponseAndPreservesAPIErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("25.0.0")
-
 	var out bytes.Buffer
 	n, err := client.Storage().ReadTo(ctx, "/ext/payload.bin", &out)
 	if err != nil {
@@ -1062,6 +1059,7 @@ func TestStorageResponseModelsMatchFirmwareUnsignedShapes(t *testing.T) {
 	const aboveMaxInt64 uint64 = 1 << 63
 	client, err := NewClient(
 		WithBaseURL("http://busybar.local"),
+		WithVersionNegotiation(VersionNegotiationDisabled),
 		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			switch r.URL.Path {
 			case "/api/storage/list":
@@ -1086,8 +1084,6 @@ func TestStorageResponseModelsMatchFirmwareUnsignedShapes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("25.0.0")
-
 	list, err := client.Storage().List(context.Background(), "/ext")
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -1112,6 +1108,7 @@ func TestStorageResponseModelsMatchFirmwareUnsignedShapes(t *testing.T) {
 func TestServiceValidationRejectsInvalidInputsBeforeNetwork(t *testing.T) {
 	client, err := NewClient(
 		WithBaseURL("http://busybar.local"),
+		WithVersionNegotiation(VersionNegotiationDisabled),
 		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Fatal("network should not be called for invalid request")
 			return nil, nil
@@ -1120,7 +1117,6 @@ func TestServiceValidationRejectsInvalidInputsBeforeNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	client.setCachedAPISemVerForTest("25.0.0")
 	ctx := context.Background()
 
 	checks := []struct {
@@ -1159,7 +1155,7 @@ func TestServiceValidationRejectsInvalidInputsBeforeNetwork(t *testing.T) {
 		{"time timezone", func() error { return client.Time().SetTimezone(ctx, "") }},
 		{"update changelog", func() error { _, err := client.Update().Changelog(ctx, ""); return err }},
 		{"update install", func() error { return client.Update().Install(ctx, "") }},
-		{"update autoupdate", func() error { return client.Update().SetAutoupdate(ctx, AutoupdateSettings{IntervalEnd: "24:00"}) }},
+		{"update autoupdate", func() error { return client.Update().SetAutoUpdate(ctx, AutoUpdateSettings{IntervalEnd: "24:00"}) }},
 	}
 	for _, check := range checks {
 		t.Run(check.name, func(t *testing.T) {
@@ -1284,48 +1280,55 @@ func successJSONCase(name, method, path, query, expectedJSONBody string, call fu
 	return serviceRequestCase{name: name, call: call, method: method, path: path, query: query, expectedJSONBody: expectedJSONBody, response: response, expectedContentType: "application/json; charset=utf-8"}
 }
 
-func assertServiceRequest(t *testing.T, tc serviceRequestCase, r *http.Request) {
-	t.Helper()
+func serviceRequestError(tc serviceRequestCase, r *http.Request) error {
 	if r.Method != tc.method {
-		t.Fatalf("method = %q, want %q", r.Method, tc.method)
+		return fmt.Errorf("method = %q, want %q", r.Method, tc.method)
 	}
 	if r.URL.Path != tc.path {
-		t.Fatalf("path = %q, want %q", r.URL.Path, tc.path)
+		return fmt.Errorf("path = %q, want %q", r.URL.Path, tc.path)
 	}
 	if r.URL.RawQuery != tc.query {
-		t.Fatalf("query = %q, want %q", r.URL.RawQuery, tc.query)
+		return fmt.Errorf("query = %q, want %q", r.URL.RawQuery, tc.query)
 	}
-	if got := r.Header.Get("X-API-Sem-Ver"); got != "25.0.0" && tc.path != "/api/version" {
-		t.Fatalf("X-API-Sem-Ver = %q, want 25.0.0", got)
+	if got := r.Header.Get("X-API-Sem-Ver"); got != "" {
+		return fmt.Errorf("X-API-Sem-Ver = %q, want absent with negotiation disabled", got)
 	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		t.Fatalf("read body: %v", err)
+		return fmt.Errorf("read body: %w", err)
 	}
-	if tc.expectedContentType != "" {
-		if got := r.Header.Get("Content-Type"); got != tc.expectedContentType {
-			t.Fatalf("Content-Type = %q, want %q", got, tc.expectedContentType)
-		}
+	if got := r.Header.Get("Content-Type"); got != tc.expectedContentType {
+		return fmt.Errorf("Content-Type = %q, want %q", got, tc.expectedContentType)
 	}
-	if tc.expectedBody != "" && string(body) != tc.expectedBody {
-		t.Fatalf("body = %q, want %q", body, tc.expectedBody)
+	if tc.expectedJSONBody == "" && string(body) != tc.expectedBody {
+		return fmt.Errorf("body = %q, want %q", body, tc.expectedBody)
 	}
 	if tc.expectedJSONBody != "" {
-		assertJSONEqual(t, string(body), tc.expectedJSONBody)
+		if err := jsonEqualError(string(body), tc.expectedJSONBody); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func assertJSONEqual(t *testing.T, actual, expected string) {
 	t.Helper()
+	if err := jsonEqualError(actual, expected); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func jsonEqualError(actual, expected string) error {
 	var actualValue any
 	if err := json.Unmarshal([]byte(actual), &actualValue); err != nil {
-		t.Fatalf("actual JSON %q is invalid: %v", actual, err)
+		return fmt.Errorf("actual JSON %q is invalid: %w", actual, err)
 	}
 	var expectedValue any
 	if err := json.Unmarshal([]byte(expected), &expectedValue); err != nil {
-		t.Fatalf("expected JSON %q is invalid: %v", expected, err)
+		return fmt.Errorf("expected JSON %q is invalid: %w", expected, err)
 	}
 	if !reflect.DeepEqual(actualValue, expectedValue) {
-		t.Fatalf("JSON body = %s, want %s", actual, expected)
+		return fmt.Errorf("JSON body = %s, want %s", actual, expected)
 	}
+	return nil
 }

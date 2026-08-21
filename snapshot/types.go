@@ -21,36 +21,61 @@ type Field[T any] struct {
 	Raw     []byte
 }
 
+// Section identifies one independently collected or updated snapshot field.
 type Section string
 
 const (
-	SectionName           Section = "name"
-	SectionVersion        Section = "version"
-	SectionStatus         Section = "status"
-	SectionSystem         Section = "system"
-	SectionPower          Section = "power"
-	SectionTime           Section = "time"
-	SectionWiFi           Section = "wifi"
-	SectionBrightness     Section = "brightness"
-	SectionAudioVolume    Section = "audio_volume"
-	SectionBLE            Section = "ble"
-	SectionStorage        Section = "storage"
+	// SectionName identifies the device name field.
+	SectionName Section = "name"
+	// SectionVersion identifies the API version field.
+	SectionVersion Section = "version"
+	// SectionStatus identifies the aggregate status field.
+	SectionStatus Section = "status"
+	// SectionSystem identifies the system status field.
+	SectionSystem Section = "system"
+	// SectionPower identifies the power status field.
+	SectionPower Section = "power"
+	// SectionTime identifies the device time field.
+	SectionTime Section = "time"
+	// SectionWiFi identifies the Wi-Fi status field.
+	SectionWiFi Section = "wifi"
+	// SectionBrightness identifies the display brightness field.
+	SectionBrightness Section = "brightness"
+	// SectionAudioVolume identifies the audio volume field.
+	SectionAudioVolume Section = "audio_volume"
+	// SectionBLE identifies the Bluetooth Low Energy status field.
+	SectionBLE Section = "ble"
+	// SectionStorage identifies the storage status field.
+	SectionStorage Section = "storage"
+	// SectionFirmwareUpdate identifies the firmware update field.
 	SectionFirmwareUpdate Section = "firmware_update"
-	SectionUpdateCheck    Section = "update_check"
-	SectionTimezone       Section = "timezone"
-	SectionMatter         Section = "matter"
-	SectionFrame          Section = "frame"
-	SectionInput          Section = "input"
-	SectionTimer          Section = "timer"
-	SectionAutoUpdate     Section = "auto_update"
-	SectionTimerProfiles  Section = "timer_profiles"
+	// SectionUpdateCheck identifies the update check field.
+	SectionUpdateCheck Section = "update_check"
+	// SectionTimezone identifies the timezone field.
+	SectionTimezone Section = "timezone"
+	// SectionMatter identifies the Matter status field.
+	SectionMatter Section = "matter"
+	// SectionFrame identifies the display frame field.
+	SectionFrame Section = "frame"
+	// SectionInput identifies the input event field.
+	SectionInput Section = "input"
+	// SectionTimer identifies the timer field.
+	SectionTimer Section = "timer"
+	// SectionAutoUpdate identifies the automatic update field.
+	SectionAutoUpdate Section = "auto_update"
+	// SectionTimerProfiles identifies the timer profiles field.
+	SectionTimerProfiles Section = "timer_profiles"
 )
 
+// DeviceTime retains the firmware timestamp and its parsed value.
+// Time is zero when Timestamp cannot be parsed.
 type DeviceTime struct {
 	Timestamp string
 	Time      time.Time
 }
 
+// Power is a normalized device power snapshot.
+// Known is false when the firmware reports an unknown power state.
 type Power struct {
 	Known                bool
 	BatteryStatus        statepb.BatteryStatus
@@ -60,28 +85,39 @@ type Power struct {
 	USBVoltageMV         uint32
 }
 
+// BrightnessMode identifies how the firmware controls display brightness.
 type BrightnessMode string
 
 const (
-	BrightnessModeUnknown   BrightnessMode = "unknown"
+	// BrightnessModeUnknown means the firmware value was not recognized.
+	BrightnessModeUnknown BrightnessMode = "unknown"
+	// BrightnessModeAutomatic means the device selects its brightness.
 	BrightnessModeAutomatic BrightnessMode = "automatic"
-	BrightnessModeManual    BrightnessMode = "manual"
+	// BrightnessModeManual means Manual contains the configured brightness.
+	BrightnessModeManual BrightnessMode = "manual"
 )
 
+// Brightness retains the configured mode and available brightness values.
+// Manual and Actual are nil when the firmware omits those values.
 type Brightness struct {
 	Mode   BrightnessMode
 	Manual *uint32
 	Actual *uint32
 }
 
+// WiFiState identifies the normalized state of the Wi-Fi service.
 type WiFiState string
 
 const (
-	WiFiStateUnknown  WiFiState = "unknown"
+	// WiFiStateUnknown means the firmware state was not recognized.
+	WiFiStateUnknown WiFiState = "unknown"
+	// WiFiStateInactive means the Wi-Fi service is not active.
 	WiFiStateInactive WiFiState = "inactive"
-	WiFiStateActive   WiFiState = "active"
+	// WiFiStateActive means the Wi-Fi service is active.
+	WiFiStateActive WiFiState = "active"
 )
 
+// IPAddress retains one firmware network configuration entry.
 type IPAddress struct {
 	Protocol statepb.IpProtocol
 	Method   statepb.IpConfigurationMethod
@@ -90,6 +126,8 @@ type IPAddress struct {
 	Netmask  string
 }
 
+// WiFi is a normalized Wi-Fi status snapshot.
+// Optional firmware enum values remain nil when the response omits them.
 type WiFi struct {
 	State            WiFiState
 	ConnectionStatus *statepb.WifiConnectionStatus
@@ -102,6 +140,7 @@ type WiFi struct {
 	IPAddresses      []IPAddress
 }
 
+// BLE retains the Bluetooth Low Energy service status and optional address.
 type BLE struct {
 	Status  blepb.ServiceStatus
 	Address *string
@@ -113,7 +152,7 @@ type Snapshot struct {
 	Name        Field[string]
 	Version     Field[string]
 	Status      Field[busylib.Status]
-	System      Field[busylib.StatusSystem]
+	System      Field[busylib.SystemStatus]
 	Power       Field[Power]
 	Time        Field[DeviceTime]
 	WiFi        Field[WiFi]
@@ -133,6 +172,8 @@ type Snapshot struct {
 	TimerProfiles  Field[*timerpb.Profiles]
 }
 
+// Complete reports whether all fields from the HTTP snapshot set are present.
+// Status-stream-only fields do not affect the result.
 func (s Snapshot) Complete() bool {
 	return s.Name.Present && s.Version.Present && s.Status.Present &&
 		s.System.Present && s.Power.Present && s.Time.Present &&
@@ -140,6 +181,7 @@ func (s Snapshot) Complete() bool {
 		s.BLE.Present && s.Storage.Present
 }
 
+// Empty reports whether no snapshot field is present.
 func (s Snapshot) Empty() bool {
 	return !s.Name.Present && !s.Version.Present && !s.Status.Present &&
 		!s.System.Present && !s.Power.Present && !s.Time.Present &&
@@ -150,6 +192,8 @@ func (s Snapshot) Empty() bool {
 		!s.AutoUpdate.Present && !s.TimerProfiles.Present
 }
 
+// Failures returns each field-local collection or decode error.
+// The returned map is independent and excludes successful fields.
 func (s Snapshot) Failures() map[Section]error {
 	failures := make(map[Section]error)
 	addFailure(failures, SectionName, s.Name.Err)

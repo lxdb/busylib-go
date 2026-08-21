@@ -74,7 +74,7 @@ func TestStoreApplyPreservesMissingSectionsAndReportsFinalChangesOnce(t *testing
 		Name: snapshot.Field[string]{Err: initialError, Raw: []byte("bad-name")},
 		Status: snapshot.Field[busylib.Status]{
 			Present: true,
-			Value:   busylib.Status{System: busylib.StatusSystem{Uptime: "1m"}},
+			Value:   busylib.Status{System: busylib.SystemStatus{Uptime: "1m"}},
 		},
 		Time: snapshot.Field[snapshot.DeviceTime]{
 			Present: true,

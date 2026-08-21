@@ -45,7 +45,7 @@ func Collect(ctx context.Context, client *busylib.Client) (Snapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return out, err
 	}
-	out.System = collectJSON(ctx, client, "/api/status/system", decodeValue[busylib.StatusSystem])
+	out.System = collectJSON(ctx, client, "/api/status/system", decodeValue[busylib.SystemStatus])
 	if err := ctx.Err(); err != nil {
 		return out, err
 	}
@@ -132,7 +132,7 @@ func decodeName(data []byte) (string, error) {
 }
 
 func decodePower(data []byte) (Power, error) {
-	var payload busylib.StatusPower
+	var payload busylib.PowerStatus
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return Power{}, err
 	}
@@ -335,11 +335,11 @@ func wifiIPAddress(value busylib.WiFiIPConfig) (IPAddress, error) {
 }
 
 func decodeBLE(data []byte) (BLE, error) {
-	var payload busylib.BleStatusResponse
+	var payload busylib.BLEStatus
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return BLE{}, err
 	}
-	status, err := bleStatus(payload.Status)
+	status, err := bleStatus(payload.State)
 	if err != nil {
 		return BLE{}, err
 	}
@@ -354,19 +354,19 @@ func decodeBLE(data []byte) (BLE, error) {
 	return value, nil
 }
 
-func bleStatus(value busylib.BLEStatus) (blepb.ServiceStatus, error) {
+func bleStatus(value busylib.BLEState) (blepb.ServiceStatus, error) {
 	switch value {
-	case busylib.BLEStatusReset:
+	case busylib.BLEStateReset:
 		return blepb.ServiceStatus_RESET, nil
-	case busylib.BLEStatusInitialization:
+	case busylib.BLEStateInitialization:
 		return blepb.ServiceStatus_INITIALIZATION, nil
-	case busylib.BLEStatusDisabled:
+	case busylib.BLEStateDisabled:
 		return blepb.ServiceStatus_READY, nil
-	case busylib.BLEStatusEnabled:
+	case busylib.BLEStateEnabled:
 		return blepb.ServiceStatus_ADVERTISING, nil
-	case busylib.BLEStatusConnectable:
+	case busylib.BLEStateConnectable:
 		return blepb.ServiceStatus_CONNECTABLE, nil
-	case busylib.BLEStatusConnected:
+	case busylib.BLEStateConnected:
 		return blepb.ServiceStatus_CONNECTED, nil
 	default:
 		return 0, fmt.Errorf("unsupported BLE status %q", value)

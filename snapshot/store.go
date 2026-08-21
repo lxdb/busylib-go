@@ -30,10 +30,13 @@ type Store struct {
 	snapshot Snapshot
 }
 
+// NewStore copies initial into a thread-safe snapshot store.
 func NewStore(initial Snapshot) *Store {
 	return &Store{snapshot: cloneSnapshot(initial)}
 }
 
+// Snapshot returns an independent copy of the stored state.
+// A nil Store returns an empty snapshot.
 func (s *Store) Snapshot() Snapshot {
 	if s == nil {
 		return Snapshot{}
