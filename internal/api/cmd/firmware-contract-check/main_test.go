@@ -80,6 +80,16 @@ data[0] = color.blue;
 	if err := checkFrames(root, contract.Frames, make(map[string][]byte)); err == nil {
 		t.Fatal("checkFrames accepted changed RGB888 byte order")
 	}
+
+	writeFirmwareFixture(t, root, map[string]string{"applications/services/gui/modules/canvas.c": files["applications/services/gui/modules/canvas.c"]})
+	displayPath := filepath.Join(root, "applications/services/front_display/front_display.h")
+	driftedDisplay := strings.Replace(files["applications/services/front_display/front_display.h"], "(72)", "(73)", 1)
+	if err := os.WriteFile(displayPath, []byte(driftedDisplay), 0o600); err != nil {
+		t.Fatalf("rewrite front dimensions: %v", err)
+	}
+	if err := checkFrames(root, contract.Frames, make(map[string][]byte)); err == nil {
+		t.Fatal("checkFrames accepted changed front display width")
+	}
 }
 
 func TestCheckLogDumpVerifiesAPI25FilenameAndJSONResponse(t *testing.T) {
@@ -107,6 +117,14 @@ MG_REPLY_ERROR(conn, 508, "Failed to dump logs.");
 	if err := checkLogDump(root, make(map[string][]byte)); err == nil {
 		t.Fatal("checkLogDump accepted the API 24 path query")
 	}
+
+	drifted = strings.Replace(source, `\"path\"`, `\"file\"`, 1)
+	if err := os.WriteFile(filepath.Join(root, path), []byte(drifted), 0o600); err != nil {
+		t.Fatalf("rewrite log dump response: %v", err)
+	}
+	if err := checkLogDump(root, make(map[string][]byte)); err == nil {
+		t.Fatal("checkLogDump accepted a changed response path key")
+	}
 }
 
 func TestCheckHTTPScreenTransportVerifiesBase64Response(t *testing.T) {
@@ -128,6 +146,15 @@ func TestCheckHTTPScreenTransportVerifiesBase64Response(t *testing.T) {
 	}
 	if err := checkHTTPScreenTransport(root, make(map[string][]byte)); err == nil {
 		t.Fatal("checkHTTPScreenTransport accepted non-Base64 frame output")
+	}
+
+	writeFirmwareFixture(t, root, map[string]string{"applications/services/web_server/web_server_i.h": files["applications/services/web_server/web_server_i.h"]})
+	streamPath := filepath.Join(root, "applications/services/web_server/http_api/api_streaming.c")
+	if err := os.WriteFile(streamPath, []byte(`MG_REPLY_DATA(conn, frame, frame_size);`), 0o600); err != nil {
+		t.Fatalf("rewrite screen response macro: %v", err)
+	}
+	if err := checkHTTPScreenTransport(root, make(map[string][]byte)); err == nil {
+		t.Fatal("checkHTTPScreenTransport accepted a changed response macro")
 	}
 }
 
@@ -184,6 +211,16 @@ BSB_State_StateUpdate_timer_profiles_tag
 	if err := checkSnapshots(root, contract, make(map[string][]byte)); err == nil {
 		t.Fatal("checkSnapshots accepted a changed canonical name key")
 	}
+
+	writeFirmwareFixture(t, root, map[string]string{"applications/services/web_server/http_api/api_name.c": files["applications/services/web_server/http_api/api_name.c"]})
+	subscriptionsPath := filepath.Join(root, "applications/services/state_publisher/subscriptions.c")
+	driftedSubscriptions := strings.Replace(files["applications/services/state_publisher/subscriptions.c"], "BSB_State_StateUpdate_ble_tag", "BSB_State_StateUpdate_unknown_tag", 1)
+	if err := os.WriteFile(subscriptionsPath, []byte(driftedSubscriptions), 0o600); err != nil {
+		t.Fatalf("rewrite snapshot update tag: %v", err)
+	}
+	if err := checkSnapshots(root, contract, make(map[string][]byte)); err == nil {
+		t.Fatal("checkSnapshots accepted a missing BLE update tag")
+	}
 }
 
 func TestCheckOptionalToolsVerifiesCLIAndMediaFacts(t *testing.T) {
@@ -217,6 +254,15 @@ func TestCheckOptionalToolsVerifiesCLIAndMediaFacts(t *testing.T) {
 	}
 	if err := checkOptionalTools(root, contract.OptionalTools, make(map[string][]byte)); err == nil {
 		t.Fatal("checkOptionalTools accepted a changed CLI prompt")
+	}
+
+	writeFirmwareFixture(t, root, map[string]string{"lib/cli/shell/cli_shell_line.c": files["lib/cli/shell/cli_shell_line.c"]})
+	portPath := filepath.Join(root, "applications/services/cli_socket/cli_socket.c")
+	if err := os.WriteFile(portPath, []byte(`#define CLI_SOCKET_PORT 24`), 0o600); err != nil {
+		t.Fatalf("rewrite CLI port: %v", err)
+	}
+	if err := checkOptionalTools(root, contract.OptionalTools, make(map[string][]byte)); err == nil {
+		t.Fatal("checkOptionalTools accepted a changed CLI port")
 	}
 }
 
@@ -320,6 +366,18 @@ state_publisher_add_transport(void) {
 	})
 	if err := checkRemoteMQTT(root, contract.Remote, make(map[string][]byte)); err == nil {
 		t.Fatal("checkRemoteMQTT accepted an implicit snapshot added to state_publisher_add_transport")
+	}
+
+	writeFirmwareFixture(t, root, map[string]string{
+		"applications/services/state_publisher/state_publisher.c": files["applications/services/state_publisher/state_publisher.c"],
+	})
+	streamPath := filepath.Join(root, "applications/services/mqtt/modules/mqtt_streaming.c")
+	driftedStream := strings.Replace(files["applications/services/mqtt/modules/mqtt_streaming.c"], `#define PUB_QOS (MqttQosAtMostOnce)`, `#define PUB_QOS (MqttQosAtLeastOnce)`, 1)
+	if err := os.WriteFile(streamPath, []byte(driftedStream), 0o600); err != nil {
+		t.Fatalf("rewrite remote stream QoS: %v", err)
+	}
+	if err := checkRemoteMQTT(root, contract.Remote, make(map[string][]byte)); err == nil {
+		t.Fatal("checkRemoteMQTT accepted a changed stream publish QoS")
 	}
 }
 
