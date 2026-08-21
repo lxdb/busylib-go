@@ -111,6 +111,52 @@ func TestWithFFmpegPathRejectsEmptyPath(t *testing.T) {
 	}
 }
 
+func TestConvertHonorsOutputLimit(t *testing.T) {
+	if _, err := Convert(
+		context.Background(),
+		bytes.NewReader([]byte{1, 2, 3, 4}),
+		"ready.snd",
+		WithMaxOutputBytes(4),
+	); err != nil {
+		t.Fatalf("Convert at limit: %v", err)
+	}
+	if _, err := Convert(
+		context.Background(),
+		bytes.NewReader([]byte{1, 2, 3, 4}),
+		"ready.snd",
+		WithMaxOutputBytes(2),
+	); !errors.Is(err, ErrOutputTooLarge) {
+		t.Fatalf("ready PCM limit error = %v", err)
+	}
+
+	factory := func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		command := exec.CommandContext(ctx, os.Args[0], "-test.run=TestFFmpegHelperProcess", "--")
+		command.Env = append(os.Environ(), "GO_WANT_FFMPEG_HELPER=success")
+		return command
+	}
+	_, err := Convert(
+		context.Background(),
+		bytes.NewBufferString("audio"),
+		"clip.wav",
+		WithMaxOutputBytes(2),
+		withCommandFactory(factory),
+	)
+	if !errors.Is(err, ErrOutputTooLarge) {
+		t.Fatalf("ffmpeg output limit error = %v", err)
+	}
+}
+
+func TestWithMaxOutputBytesRejectsNonPositiveLimit(t *testing.T) {
+	if _, err := Convert(
+		context.Background(),
+		bytes.NewReader([]byte{1, 2}),
+		"ready.snd",
+		WithMaxOutputBytes(0),
+	); err == nil {
+		t.Fatal("Convert accepted a non-positive output limit")
+	}
+}
+
 func TestFFmpegHelperProcess(t *testing.T) {
 	mode := os.Getenv("GO_WANT_FFMPEG_HELPER")
 	if mode == "" {

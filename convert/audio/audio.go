@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,11 +13,17 @@ import (
 )
 
 const (
+	// OutputExtension is the filename extension for device-ready PCM data.
 	OutputExtension = ".snd"
-	Channels        = 1
-	SampleRateHz    = 44_100
-	BitsPerSample   = 16
-	maxToolStderr   = 4096
+	// Channels is the required channel count for device-ready PCM data.
+	Channels = 1
+	// SampleRateHz is the required sample rate for device-ready PCM data.
+	SampleRateHz = 44_100
+	// BitsPerSample is the required signed little-endian PCM sample width.
+	BitsPerSample = 16
+	maxToolStderr = 4096
+	// DefaultMaxOutputBytes bounds PCM data buffered in memory.
+	DefaultMaxOutputBytes int64 = 64 << 20
 )
 
 var (
@@ -29,6 +36,18 @@ type commandFactory func(context.Context, string, ...string) *exec.Cmd
 type config struct {
 	ffmpegPath     string
 	commandFactory commandFactory
+	maxOutputBytes int64
+}
+
+// WithMaxOutputBytes changes the PCM output limit.
+func WithMaxOutputBytes(maximum int64) Option {
+	return func(config *config) error {
+		if maximum <= 0 {
+			return errors.New("maximum audio output size must be greater than zero")
+		}
+		config.maxOutputBytes = maximum
+		return nil
+	}
 }
 
 // Option configures audio conversion.
@@ -64,7 +83,11 @@ type Result struct {
 // Convert passes through already-ready PCM or invokes ffmpeg for supported
 // audio inputs. The filename extension selects the input behavior.
 func Convert(ctx context.Context, source io.Reader, filename string, options ...Option) (Result, error) {
-	config := config{ffmpegPath: "ffmpeg", commandFactory: exec.CommandContext}
+	config := config{
+		ffmpegPath:     "ffmpeg",
+		commandFactory: exec.CommandContext,
+		maxOutputBytes: DefaultMaxOutputBytes,
+	}
 	for _, option := range options {
 		if option == nil {
 			continue
@@ -78,7 +101,7 @@ func Convert(ctx context.Context, source io.Reader, filename string, options ...
 		return Result{}, &ConversionError{Operation: "validate", InputFormat: extension, Err: ErrInvalidAudio}
 	}
 	if _, ok := readyExtensions[extension]; ok {
-		return readReadyPCM(source, extension)
+		return readReadyPCM(source, extension, config.maxOutputBytes)
 	}
 	if _, ok := inputExtensions[extension]; !ok {
 		return Result{}, &ConversionError{Operation: "validate", InputFormat: extension, Err: ErrUnsupportedFormat}
@@ -92,14 +115,21 @@ func ConvertFile(ctx context.Context, path string, options ...Option) (Result, e
 	if err != nil {
 		return Result{}, &ConversionError{Operation: "open", InputFormat: strings.ToLower(filepath.Ext(path)), Err: err}
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	return Convert(ctx, file, path, options...)
 }
 
-func readReadyPCM(source io.Reader, extension string) (Result, error) {
-	data, err := io.ReadAll(source)
+func readReadyPCM(source io.Reader, extension string, maximum int64) (Result, error) {
+	reader := io.Reader(source)
+	if maximum < math.MaxInt64 {
+		reader = io.LimitReader(source, maximum+1)
+	}
+	data, err := io.ReadAll(reader)
 	if err != nil {
 		return Result{}, &ConversionError{Operation: "read", InputFormat: extension, Err: err}
+	}
+	if int64(len(data)) > maximum {
+		return Result{}, &ConversionError{Operation: "read", InputFormat: extension, Err: ErrOutputTooLarge}
 	}
 	if len(data) == 0 || len(data)%2 != 0 {
 		return Result{}, &ConversionError{Operation: "validate", InputFormat: extension, Err: ErrInvalidAudio}
@@ -116,12 +146,21 @@ func runFFmpeg(ctx context.Context, source io.Reader, extension string, config c
 	}
 	command := config.commandFactory(ctx, config.ffmpegPath, arguments...)
 	command.Stdin = source
-	var output bytes.Buffer
+	output := &limitedOutputBuffer{maximum: config.maxOutputBytes}
 	stderr := &limitedBuffer{maximum: maxToolStderr}
-	command.Stdout = &output
+	command.Stdout = output
 	command.Stderr = stderr
-	if err := command.Run(); err != nil {
-		cause := errors.Join(ErrToolFailed, err)
+	commandErr := command.Run()
+	if output.exceeded {
+		return Result{}, &ConversionError{
+			Operation:   "transcode",
+			InputFormat: extension,
+			Tool:        config.ffmpegPath,
+			Err:         ErrOutputTooLarge,
+		}
+	}
+	if commandErr != nil {
+		cause := errors.Join(ErrToolFailed, commandErr)
 		if ctx.Err() != nil {
 			cause = errors.Join(ErrToolFailed, ctx.Err())
 		}
@@ -144,16 +183,39 @@ func runFFmpeg(ctx context.Context, source io.Reader, extension string, config c
 	return Result{Data: append([]byte(nil), output.Bytes()...), Extension: OutputExtension}, nil
 }
 
+type limitedOutputBuffer struct {
+	buffer   bytes.Buffer
+	maximum  int64
+	exceeded bool
+}
+
+func (b *limitedOutputBuffer) Write(data []byte) (int, error) {
+	remaining := b.maximum - int64(b.buffer.Len())
+	if int64(len(data)) <= remaining {
+		return b.buffer.Write(data)
+	}
+	b.exceeded = true
+	if remaining > 0 {
+		_, _ = b.buffer.Write(data[:int(remaining)])
+	}
+	return int(max(remaining, 0)), ErrOutputTooLarge
+}
+
+func (b *limitedOutputBuffer) Len() int      { return b.buffer.Len() }
+func (b *limitedOutputBuffer) Bytes() []byte { return b.buffer.Bytes() }
+
 type limitedBuffer struct {
-	bytes.Buffer
+	buffer  bytes.Buffer
 	maximum int
 }
 
 func (b *limitedBuffer) Write(data []byte) (int, error) {
 	count := len(data)
-	remaining := b.maximum - b.Len()
+	remaining := b.maximum - b.buffer.Len()
 	if remaining > 0 {
-		_, _ = b.Buffer.Write(data[:min(len(data), remaining)])
+		_, _ = b.buffer.Write(data[:min(len(data), remaining)])
 	}
 	return count, nil
 }
+
+func (b *limitedBuffer) String() string { return b.buffer.String() }
