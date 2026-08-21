@@ -1,108 +1,106 @@
 # busylib-go
 
-Go library for BUSY Bar devices.
+`busylib-go` is a Go client for BUSY Bar devices.
 
-This repository currently contains the completed Phase 3 through Phase 10
-device implementation:
+It supports local HTTP, local status streams, USB CLI access, and caller-owned MQTT 5 transports.
 
-- Go module: `github.com/lxdb/busylib-go`
-- Root `busylib.Client` request execution for direct-device and explicit remote
-  transports
-- Prepared requests, request IDs, session IDs, local access keys, API semver
-  negotiation, repeatable body handling, typed errors, and firmware-verified
-  remote-operation guards
-- Product-oriented typed HTTP service accessors for all 67 synchronous
-  operations audited from BUSY Bar F22 firmware API `25.0.0`
-- Firmware-aligned request/response models and validation, including Wi-Fi,
-  Matter partial updates, display/path rules, and Busy timer structures
-- Display, asset, storage, and audio helpers for common app workflows
-- A local `/api/status/ws` stream with typed protobuf updates, raw messages,
-  lifecycle status, stale-data detection, bounded reconnect, and snapshot requests
-- Firmware-aligned HTTP and status-stream frame decoding with raw pixels,
-  Plain/RLE support, and portable RGBA output
-- Best-effort HTTP snapshots plus a thread-safe store that retains and merges
-  all 15 typed status-stream updates without owning the stream lifecycle
-- An optional raw USB-network CLI client with fresh and persistent sessions,
-  curated firmware command wrappers, bounded responses, and ETX cancellation
-- An optional, dependency-free `remote` package that adapts a caller-supplied
-  MQTT 5 transport to the firmware HTTP and leased status-stream protocols
-- Optional image preparation and audio conversion packages with no added Go
-  dependencies; compressed audio uses a caller-configurable `ffmpeg` executable
-- Generated protobuf packages for the BUSY Bar status stream
-- Local copies of the firmware-selected protobuf inputs
-- A pinned firmware contract audit receipt with source provenance
-- Reproducible protobuf generation and an optional firmware contract checker
+> [!WARNING]
+> This repository is preparing for its first public release.
+> Do not publish it until the bundled protobuf license is resolved.
 
-## Typed HTTP Services
+## Requirements
 
-Use service accessors for normal device operations:
+- Go 1.23 or newer.
+- macOS is the supported client platform for the first release.
+- BUSY Bar firmware API 25 for device operations.
+- `ffmpeg` only for compressed audio conversion.
+
+## Install
+
+The module does not have a public tag yet.
+Use a tagged version after the first release.
+
+```sh
+go get github.com/lxdb/busylib-go@v0.1.0
+```
+
+## Quick start
 
 ```go
-client, err := busylib.NewClient(
-	busylib.WithBaseURL("http://10.0.4.20"),
-	busylib.WithLocalAccessKey("1234"),
+package main
+
+import (
+	"context"
+	"log"
+
+	busylib "github.com/lxdb/busylib-go"
 )
-if err != nil {
-	// handle configuration error
-}
 
+func main() {
+	client, err := busylib.NewClient(
+		busylib.WithBaseURL("http://10.0.4.20"),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	status, err := client.System().Status(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("firmware: %s", status.Firmware.Version)
+}
+```
+
+The client negotiates the device API version by default.
+Requests return typed validation, transport, protocol, API, and version errors.
+Buffered responses use a 1 MiB default limit.
+
+## Packages
+
+| Package | Purpose |
+| --- | --- |
+| `busylib` | HTTP client and typed device services |
+| `convert` | Bounded image preparation for both displays |
+| `convert/audio` | Bounded PCM preparation and optional `ffmpeg` conversion |
+| `convert/animation` | Bounded firmware-native `.anim` generation from frames, images, or ZIPs |
+| `frame` | HTTP and protobuf frame decoding |
+| `remote` | MQTT 5 remote HTTP and status-stream adapter |
+| `snapshot` | Best-effort snapshots and synchronized state merging |
+| `stream` | Shared status-stream contracts and typed updates |
+| `usb` | Bounded USB-network CLI client |
+
+## Common operations
+
+Service accessors group operations by device feature.
+
+```go
 status, err := client.System().Status(ctx)
-if err != nil {
-	// handle request or device error
-}
-
-err = client.Display().Draw(ctx, busylib.DisplayElements{
-	ApplicationName: "my_app",
-	Elements: []busylib.DisplayElement{
-		busylib.TextElement{
-			BaseDisplayElement: busylib.BaseDisplayElement{ID: "title"},
-			Text:               "Hello",
-			Font:               busylib.FontNormal,
-		},
-	},
-})
-```
-
-API 25 log dumps accept an optional filename without a path or extension and
-return the created device path. Passing an empty filename uses `/ext/log.txt`:
-
-```go
-dump, err := client.System().DumpLog(ctx, "support")
-// dump.Path is /ext/support.txt on success.
-```
-
-Phase 5 exposes constructors for common display and audio payloads:
-
-```go
 err = client.Display().Draw(ctx, busylib.NewDisplayElements(
-	"my_app",
-	busylib.NewTextElement("title", "Hello", busylib.FontNormal),
-	busylib.NewAssetAnimationElement("spinner", "spinner.anim"),
+	"example",
+	busylib.NewTextElement("title", "Build complete", busylib.FontNormal),
 ))
-
-err = client.Audio().PlayStock(ctx, "my_app", "shared/tone.snd")
 err = client.Audio().SetVolumeSilently(ctx, 40)
 ```
 
-File-backed helpers use repeatable bodies, so they can participate in transport
-and API-version compatibility retries:
+File helpers use repeatable request bodies.
+They can participate in transport and compatibility retries.
 
 ```go
-err = client.Assets().UploadFile(ctx, "my_app", "spinner.anim", "./spinner.anim")
+err = client.Assets().UploadFile(ctx, "example", "spinner.anim", "./spinner.anim")
 err = client.Storage().WriteFile(ctx, "/ext/data.bin", "./data.bin")
 
-var out bytes.Buffer
-n, err := client.Storage().ReadTo(ctx, "/ext/data.bin", &out)
+var output bytes.Buffer
+_, err = client.Storage().ReadTo(ctx, "/ext/data.bin", &output)
 ```
 
-The service groups are `System`, `Settings`, `Display`, `Audio`, `Assets`,
-`Storage`, `Busy`, `Account`, `BLE`, `WiFi`, `Input`, `SmartHome`, `Time`, and
-`Update`.
+The service groups cover system, settings, display, audio, assets, and storage.
+They also cover timers, accounts, BLE, Wi-Fi, input, Matter, time, and updates.
 
-## Local Status Stream
+## Local status stream
 
-`Client.NewStatusStream` creates a one-shot local stream. It reuses the
-client's local access key, API-version negotiation, HTTP transport, and timeout:
+`Client.NewStatusStream` creates a one-shot local stream.
+It reuses the client's HTTP settings.
 
 ```go
 statusStream, err := client.NewStatusStream(
@@ -113,322 +111,107 @@ statusStream, err := client.NewStatusStream(
 	}),
 )
 if err != nil {
-	// handle configuration error
+	return err
 }
 if err := statusStream.Start(ctx); err != nil {
-	// handle initial connection failure
+	return err
 }
 defer statusStream.Stop()
 
 for message := range statusStream.Messages() {
 	for _, update := range message.Updates {
-		// inspect update.Kind() or its concrete typed update
+		_ = update.Kind()
 	}
 }
 ```
 
-The initial control is `{"enable":true,"send":"all"}`. Use
-`RequestSnapshot(ctx)` to send another `{"send":"all"}` request. Binary
-messages preserve raw bytes and decoded `statepb.State`; text messages pass
-through unchanged. Decode errors remain attached to their message, while only
-terminal failures appear on `Errors()`. `Statuses()` reports lifecycle, access,
-and data freshness. This WebSocket stream is local-only; use the `remote`
-package for the firmware MQTT stream.
+Read `Messages`, `Statuses`, and `Errors` concurrently.
+Use `RequestSnapshot` to request all current state again.
+Use the `remote` package for MQTT status streams.
 
 ## Remote MQTT
 
-The optional `remote` package accepts a caller-owned MQTT 5 transport. It does
-not select a broker, MQTT library, credentials, or authorization policy:
+The `remote` package accepts a caller-owned MQTT 5 transport.
+It does not select a broker, client library, or credential policy.
 
 ```go
-remoteClient, err := remote.NewClient(mqttTransport, firmwareSessionID)
+remoteClient, err := remote.NewClient(
+	mqttTransport,
+	firmwareSessionID,
+	remote.WithClientID("example"),
+)
 if err != nil {
-	// handle configuration error
+	return err
 }
-defer remoteClient.Close() // mqttTransport remains caller-owned
+defer remoteClient.Close()
 
-device := remoteClient.Device()
-status, err := device.System().Status(ctx)
-
-statusStream, err := remoteClient.NewStatusStream()
-if err == nil {
-	err = statusStream.Start(ctx)
-}
+status, err := remoteClient.Device().System().Status(ctx)
 ```
 
-`remote.Transport` consists only of `Publish` and `Subscribe`; adapters map its
-messages and MQTT 5 response-topic, correlation-data, and message-expiry
-properties to the caller's MQTT client. HTTP requests remain canonical
-`/api/...` requests. The firmware blocks these operations remotely, so the Go
-client rejects them before publication:
+The transport maps MQTT response topics and correlation data.
+The wrapper leaves the caller's transport open.
+Firmware blocks some HTTP operations through MQTT.
+The client rejects these operations before publication.
 
-- `POST /api/update`
-- `DELETE /api/account`
-- `POST /api/account/link`
-- `PUT /api/account/backend`
-- `POST /api/wifi/connect`
-- `POST /api/wifi/disconnect`
-- `GET /api/wifi/networks`
+## Frames and media
 
-The stream uses a 60-second lease renewed every 30 seconds by default and
-permits one active stream per wrapper. Firmware does not define a remote
-snapshot command: `RequestSnapshot` returns `stream.ErrSnapshotUnsupported`.
-Use `snapshot.Collect(ctx, remoteClient.Device())` for a point-in-time snapshot.
-No local-to-remote fallback is implicit.
-
-## Frame Decoding
-
-The `frame` package keeps HTTP and status-stream transport separate from frame
-conversion. API 25 returns `/api/screen` pixels Base64-encoded at the HTTP
-layer; `Display.Screen` decodes that transport and returns pixel bytes for
-`frame.FromHTTP`:
+Use `frame.FromHTTP` after `Display.Screen`.
+Use `frame.FromProto` for a status-stream frame.
 
 ```go
 raw, err := client.Display().Screen(ctx, 0)
 if err != nil {
-	// handle screen fetch error
+	return err
 }
-
 displayFrame, err := frame.FromHTTP(0, raw)
 if err != nil {
-	// handle invalid frame metadata or payload
+	return err
 }
 rgba, err := displayFrame.RGBA()
 ```
 
-Status-stream frame updates use the same decoder:
+The `convert` package prepares static images.
+The `convert/audio` package prepares raw device audio.
+The `convert/animation` package creates native `bicycle0` animations from
+device-ready BGR frames, equal-sized Go images, or firmware-style PNG ZIPs.
+These packages enforce configurable memory limits.
 
-```go
-update, ok := update.(stream.FrameUpdate)
-if ok {
-	displayFrame, err := frame.FromProto(update.Value)
-	if err == nil {
-		rgba, err := displayFrame.RGBA()
-		_ = rgba
-		_ = err
-	}
-}
-```
+## USB CLI
 
-`Frame.Pixels` returns a fresh uncompressed byte slice in the protobuf pixel
-format; L4 remains packed. `Frame.RGBA` returns `*image.RGBA`. Current firmware
-uses front `72x16` BGR bytes despite the protobuf `RGB888` name, and back
-`160x80` L4 bytes with the low nibble first. Unsupported or unknown enum values
-remain visible on `Frame` and conversion returns a typed `frame.Error`.
-
-## Snapshot Helpers
-
-The optional `snapshot` package collects the 11 canonical firmware HTTP fields
-sequentially. Endpoint and payload failures stay on their individual fields;
-caller cancellation is returned with the partial result:
-
-```go
-deviceSnapshot, err := snapshot.Collect(ctx, client)
-if err != nil {
-	// The caller cancelled or collection could not be started.
-}
-for section, fieldErr := range deviceSnapshot.Failures() {
-	_ = section
-	_ = fieldErr
-}
-```
-
-`snapshot.NewStore` owns merge synchronization and defensive copies, but no
-goroutines or channels. Apply every typed update from each stream message and
-use the returned sections as a synchronous change notification:
-
-```go
-store := snapshot.NewStore(deviceSnapshot)
-for message := range statusStream.Messages() {
-	change := store.Apply(message.Updates...)
-	for _, section := range change.Sections {
-		_ = section
-	}
-}
-```
-
-The store retains all 15 firmware typed updates, including the latest frame,
-input event, timer, and profiles. Missing or unknown updates do not clear known
-state. Successful stream updates clear stale field-local HTTP diagnostics.
-
-## Optional USB CLI
-
-The `usb` package connects to the raw firmware CLI exposed by the USB network
-interface at `10.0.4.20:23`. It is independent of the HTTP client. Direct
-commands use a fresh connection; `Open` creates an explicitly persistent,
-serialized session. A failed persistent transport is terminal and is never
-silently reconnected or replayed.
-
-This example requires a connected BUSY Bar:
+The `usb` package connects to the raw firmware CLI.
+It uses `10.0.4.20:23` by default.
 
 ```go
 cli, err := usb.NewClient()
 if err != nil {
-	// handle configuration error
+	return err
 }
-
 response, err := cli.Commands().Uptime(ctx)
-if err != nil {
-	// handle usb.Error
-}
-fmt.Println(response.Output)
-
-session, err := cli.Open(ctx)
-if err != nil {
-	// handle connection error
-}
-defer session.Close()
-
-streamCtx, cancel := context.WithCancel(ctx)
-defer cancel()
-err = session.Commands().Log(streamCtx, os.Stdout, "info")
 ```
 
-Cancelling `Log`, `Top`, or generic `StreamCommand` sends byte `3` (ETX) and
-keeps a session usable only if the firmware prompt is recovered. The package
-does not send Telnet negotiation; it tolerantly removes inbound IAC sequences,
-ANSI control sequences, command echoes, and the `>: ` prompt from cleaned
-buffered output. `Response.Raw` preserves the prompt-framed device bytes.
+Direct commands use a new connection.
+`Open` creates one serialized persistent session.
+Failed commands are not replayed.
 
-## Optional Media Conversion
+## Documentation
 
-`convert.Image` accepts PNG, JPEG, or static GIF, downsizes with bilinear
-sampling, center-crops to the front or back display maximum, never upscales,
-and emits PNG:
+- [Changelog](CHANGELOG.md)
 
-```go
-prepared, err := convert.Image(source, busylib.DisplayFront)
-if err != nil {
-	// handle convert.ConversionError
-}
-err = client.Assets().Upload(ctx, busylib.UploadAssetRequest{
-	ApplicationName: "my_app",
-	File:            "status.png",
-	Body:            busylib.BytesBody(prepared.Data, "image/png"),
-})
-```
+## Stability
 
-`convert/audio` passes through non-empty, even-length `.snd`, `.raw`, and
-`.pcm` input. It invokes `ffmpeg` only for `.mp3`, `.ogg`, `.aac`, `.m4a`,
-`.flac`, or `.wav`, producing headerless mono 44.1 kHz signed 16-bit
-little-endian PCM with a `.snd` result extension:
+The project has not published a stable API release.
+Review release notes before each pre-1.0 upgrade.
 
-```go
-preparedAudio, err := audio.Convert(ctx, source, "tone.mp3")
-if err != nil {
-	// handle audio.ConversionError
-}
-err = client.Assets().Upload(ctx, busylib.UploadAssetRequest{
-	ApplicationName: "my_app",
-	File:            "tone.snd",
-	Body:            busylib.BytesBody(preparedAudio.Data, "application/octet-stream"),
-})
-```
+## Contributing and support
 
-Use `audio.WithFFmpegPath` when `ffmpeg` is not on `PATH`. Animated GIF, video,
-animation, and unknown conversion inputs are rejected locally. Unknown files
-can still be written through the core storage API unchanged.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a change.
+Use [SUPPORT.md](SUPPORT.md) for support routes.
+Use [SECURITY.md](SECURITY.md) for vulnerability reports.
 
-## Request Core
+## License
 
-The root package also exposes raw request execution for schema drift,
-diagnostics, and operations that need lower-level control:
+Original project code uses the MIT License.
+See [LICENSE](LICENSE) for the complete terms.
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) before distribution.
 
-```go
-client, err := busylib.NewClient(
-	busylib.WithBaseURL("http://10.0.4.20"),
-	busylib.WithLocalAccessKey("1234"),
-)
-if err != nil {
-	// handle configuration error
-}
-
-resp, err := client.Do(ctx, busylib.Request{
-	Method:       "GET",
-	Path:         "/api/status",
-	ResponseMode: busylib.ResponseModeJSON,
-})
-```
-
-Important request behavior:
-
-- Local-mode bare hosts are normalized to `http://<host>` and stored as an
-  origin.
-- Local and remote requests both retain canonical `/api/...` paths.
-- Local access keys are sent as `X-API-Token`.
-- Remote broker authentication is owned by the caller-supplied transport; the
-  root client injects no bearer token or local access key in remote mode.
-- API semver is fetched from `/api/version`, cached, and sent as
-  `X-API-Sem-Ver`.
-- A 405 compatibility response refreshes API semver once and retries only when
-  the request body is repeatable.
-- The firmware's seven MQTT HTTP blocklist operations are rejected before
-  remote network I/O.
-- Remote mode requires an explicit base URL and HTTP client and never falls
-  back from local mode.
-- Caller-provided `Authorization` and `X-API-Token` headers are rejected;
-  configure local device access with `WithLocalAccessKey` and broker access in
-  the caller's remote transport.
-- Version negotiation can be disabled with `WithVersionNegotiation`.
-
-## Development
-
-Generate protobuf files:
-
-```sh
-scripts/generate-protobuf.sh
-```
-
-The protobuf generator verifies the pinned tool versions in
-`scripts/protobuf-tools.env`, uses an already installed matching
-`protoc-gen-go` or installs the pinned version into a temporary tool directory,
-and checks `scripts/protobuf-packages.tsv` against all copied `.proto` files
-before writing generated code. The local `protoc` binary must match the pinned
-`PROTOC_VERSION`.
-
-Check generated protobuf drift:
-
-```sh
-scripts/check-protobuf.sh
-```
-
-Verify the pinned firmware contract audit against a maintainer checkout:
-
-```sh
-BUSYBAR_FIRMWARE_DIR=/path/to/busybar-firmware scripts/check-firmware-contract.sh
-```
-
-Normal builds, tests, and library use do not require the firmware checkout.
-
-Run tests:
-
-```sh
-go test ./...
-```
-
-## Contract Authority And Inputs
-
-The BUSY Bar firmware source is the sole canonical source for device behavior.
-Other busylib implementations and the historical OpenAPI snapshot are research
-inputs only and cannot override firmware handlers, validation, serialization,
-or constants.
-
-The Phase 3 through Phase 10 implementation audit used
-`https://github.com/busy-app/busybar-firmware.git` at commit
-`ac59f45cfcd14f6b0fccb8e8e8f47e183a537aaf` (branch `release`, tag `1.1.1`,
-API `25.0.0`, target F22). F22 inherits the F21 platform configuration where
-the receipt cites files under `targets/f21/`.
-Firmware selects protobuf commit
-`dba670e2ddb5cda511af997ca5fcb1254e90917f`.
-
-The standalone module keeps independently maintained contract artifacts under
-`internal/`:
-
-- `internal/protosrc/bsb-protobuf/`
-- `internal/api/testdata/firmware-contract.json`
-
-The firmware source is GPL-2.0-or-later. No firmware implementation code is
-copied into this module; the JSON receipt records protocol facts and source
-provenance. Do not edit generated protobuf files directly. Audit a new firmware
-revision, refresh the receipt or protobuf input as needed, regenerate, and run
-the checks.
+Publication remains blocked until the protobuf copyright holder grants compatible permission.
