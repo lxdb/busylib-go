@@ -1,0 +1,37 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - errcheck
+    - errorlint
+    - govet
+    - godoclint
+    - ineffassign
+    - misspell
+    - nolintlint
+    - staticcheck
+    - unused
+  settings:
+    godoclint:
+      default: basic
+      enable:
+        - require-doc
+  exclusions:
+    generated: strict
+    rules:
+      - linters:
+          - godoclint
+        path: ^internal/
+      - linters:
+          - godoclint
+        path: _test\.go$
+
+formatters:
+  enable:
+    - gofmt
