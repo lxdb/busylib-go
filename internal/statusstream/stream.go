@@ -399,6 +399,7 @@ func (s *Stream) connectOnce(ctx context.Context, attempt int) (*websocket.Conn,
 			statusCode := 0
 			if response != nil {
 				statusCode = response.StatusCode
+				_ = response.Body.Close()
 			}
 			if statusCode == http.StatusMethodNotAllowed && s.config.VersionNegotiation && !compatibilityRetried {
 				compatibilityRetried = true

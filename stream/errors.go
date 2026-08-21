@@ -23,6 +23,7 @@ type Error struct {
 	Err        error
 }
 
+// Error describes the failed stream operation without exposing URL queries.
 func (e *Error) Error() string {
 	if e.StatusCode != 0 {
 		return fmt.Sprintf("status stream %s %s failed: HTTP %d", e.Operation, e.Path, e.StatusCode)
@@ -36,8 +37,10 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("status stream %s %s failed", e.Operation, e.Path)
 }
 
+// Unwrap returns the underlying transport, protocol, or lifecycle error.
 func (e *Error) Unwrap() error { return e.Err }
 
+// Error describes the cause and severity reported by the firmware.
 func (e *DeviceError) Error() string {
 	return fmt.Sprintf("BUSY Bar status stream reported %s severity %s", e.Cause.String(), e.Severity.String())
 }
