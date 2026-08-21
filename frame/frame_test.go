@@ -313,28 +313,106 @@ func TestPixelsRejectsUnsupportedMetadataAndMalformedPayloads(t *testing.T) {
 	}
 }
 
-func FuzzPixelsRejectsMalformedFramesWithoutPanicking(f *testing.F) {
-	f.Add([]byte{})
-	f.Add([]byte{0})
-	f.Add([]byte{0x82, 1, 2, 3})
-	f.Add([]byte{0x7f, 1, 2, 3})
-	f.Fuzz(func(t *testing.T, raw []byte) {
+func FuzzPixelsPreservesFrameInvariants(f *testing.F) {
+	addFrameSeed := func(screen framepb.Screen, pixelFormat framepb.PixelFormat, encoding framepb.Encoding, raw []byte) {
+		f.Add(uint8(screen), uint8(pixelFormat), uint8(encoding), raw)
+	}
+	addFrameSeed(framepb.Screen_FRONT, framepb.PixelFormat_RGB888, framepb.Encoding_RUN_LENGTH, []byte{})
+	addFrameSeed(framepb.Screen_FRONT, framepb.PixelFormat_RGB888, framepb.Encoding_RUN_LENGTH, []byte{0})
+	addFrameSeed(framepb.Screen_FRONT, framepb.PixelFormat_RGB888, framepb.Encoding_RUN_LENGTH, []byte{0x82, 1, 2, 3})
+	for _, seed := range validFrameSeeds() {
+		addFrameSeed(seed.Screen, seed.PixelFormat, seed.Encoding, seed.Raw)
+	}
+
+	f.Fuzz(func(t *testing.T, screenValue, pixelFormatValue, encodingValue uint8, raw []byte) {
 		if len(raw) > MaxPayloadSize {
 			t.Skip()
 		}
+		screen := framepb.Screen(screenValue)
+		width, height := uint32(FrontWidth), uint32(FrontHeight)
+		if screen == framepb.Screen_BACK {
+			width, height = BackWidth, BackHeight
+		}
 		value := Frame{
-			Screen:      framepb.Screen_FRONT,
-			Width:       FrontWidth,
-			Height:      FrontHeight,
-			Encoding:    framepb.Encoding_RUN_LENGTH,
-			PixelFormat: framepb.PixelFormat_RGB888,
-			Raw:         raw,
+			Screen:      screen,
+			Width:       width,
+			Height:      height,
+			Encoding:    framepb.Encoding(encodingValue),
+			PixelFormat: framepb.PixelFormat(pixelFormatValue),
+			Raw:         append([]byte(nil), raw...),
 		}
 		pixels, err := value.Pixels()
-		if err == nil && len(pixels) != FrontWidth*FrontHeight*3 {
-			t.Fatalf("decoded length = %d", len(pixels))
+		if err != nil {
+			return
+		}
+		want, err := value.pixelDataSize()
+		if err != nil {
+			t.Fatalf("successful Pixels has invalid metadata: %v", err)
+		}
+		if len(pixels) != want {
+			t.Fatalf("decoded length = %d, want %d", len(pixels), want)
+		}
+		again, err := value.Pixels()
+		if err != nil || !bytes.Equal(pixels, again) {
+			t.Fatalf("second Pixels result differs: bytes_equal=%t error=%v", bytes.Equal(pixels, again), err)
+		}
+		rgba, err := value.RGBA()
+		if err != nil {
+			t.Fatalf("RGBA rejected a frame accepted by Pixels: %v", err)
+		}
+		if rgba.Bounds() != image.Rect(0, 0, int(width), int(height)) {
+			t.Fatalf("RGBA bounds = %v", rgba.Bounds())
+		}
+		if !bytes.Equal(value.Raw, raw) {
+			t.Fatal("Pixels or RGBA mutated the raw payload")
 		}
 	})
+}
+
+func validFrameSeeds() []Frame {
+	type seedMetadata struct {
+		screen      framepb.Screen
+		width       uint32
+		height      uint32
+		pixelFormat framepb.PixelFormat
+	}
+	metadata := []seedMetadata{
+		{framepb.Screen_FRONT, FrontWidth, FrontHeight, framepb.PixelFormat_RGB888},
+		{framepb.Screen_FRONT, FrontWidth, FrontHeight, framepb.PixelFormat_L8},
+		{framepb.Screen_FRONT, FrontWidth, FrontHeight, framepb.PixelFormat_L4},
+		{framepb.Screen_BACK, BackWidth, BackHeight, framepb.PixelFormat_L8},
+		{framepb.Screen_BACK, BackWidth, BackHeight, framepb.PixelFormat_L4},
+	}
+	var seeds []Frame
+	for _, value := range metadata {
+		plain := Frame{
+			Screen:      value.screen,
+			Width:       value.width,
+			Height:      value.height,
+			Encoding:    framepb.Encoding_PLAIN,
+			PixelFormat: value.pixelFormat,
+		}
+		size, err := plain.pixelDataSize()
+		if err != nil {
+			panic(err)
+		}
+		plain.Raw = make([]byte, size)
+		for index := range plain.Raw {
+			plain.Raw[index] = byte(index)
+		}
+		seeds = append(seeds, plain)
+
+		blockSize, err := plain.rleBlockSize()
+		if err != nil || size%blockSize != 0 {
+			panic("invalid frame seed")
+		}
+		encoded := appendRLERepeats(nil, bytes.Repeat([]byte{0x5a}, blockSize), size/blockSize)
+		rle := plain
+		rle.Encoding = framepb.Encoding_RUN_LENGTH
+		rle.Raw = encoded
+		seeds = append(seeds, rle)
+	}
+	return seeds
 }
 
 func appendRLERepeats(encoded, block []byte, blockCount int) []byte {

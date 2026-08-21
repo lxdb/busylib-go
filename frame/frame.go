@@ -8,11 +8,16 @@ import (
 )
 
 const (
-	FrontWidth  = 72
+	// FrontWidth is the front display width in pixels.
+	FrontWidth = 72
+	// FrontHeight is the front display height in pixels.
 	FrontHeight = 16
-	BackWidth   = 160
-	BackHeight  = 80
+	// BackWidth is the back display width in pixels.
+	BackWidth = 160
+	// BackHeight is the back display height in pixels.
+	BackHeight = 80
 
+	// MaxPayloadSize is the largest encoded or decoded frame in bytes.
 	MaxPayloadSize = 16_384
 )
 
