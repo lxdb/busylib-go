@@ -41,7 +41,7 @@ func readUntilPrompt(reader io.Reader, maximum int) ([]byte, error) {
 			}
 		}
 		if err != nil {
-			return result, fmt.Errorf("%w: %v", ErrPromptNotFound, err)
+			return result, fmt.Errorf("%w: %w", ErrPromptNotFound, err)
 		}
 	}
 }
@@ -88,7 +88,7 @@ func stripIAC(data []byte) []byte {
 			index += 3
 		case 250:
 			index += 2
-			for index+1 < len(data) && !(data[index] == 255 && data[index+1] == 240) {
+			for index+1 < len(data) && (data[index] != 255 || data[index+1] != 240) {
 				index++
 			}
 			if index+1 < len(data) {

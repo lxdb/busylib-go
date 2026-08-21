@@ -13,7 +13,7 @@ import (
 
 func TestClientSendCommandUsesFreshPromptFramedConnection(t *testing.T) {
 	address, done := serveOnce(t, func(conn net.Conn) {
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		_, _ = conn.Write([]byte{255, 251, 1})
 		_, _ = io.WriteString(conn, "BUSY Bar\r\n>: ")
 		if got := readLine(t, conn); got != "uptime\r\n" {
@@ -38,7 +38,7 @@ func TestClientSendCommandUsesFreshPromptFramedConnection(t *testing.T) {
 
 func TestClientProbeOnlyWaitsForPrompt(t *testing.T) {
 	address, done := serveOnce(t, func(conn net.Conn) {
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		_, _ = io.WriteString(conn, "ready\r\n>: ")
 		_ = conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 		buffer := make([]byte, 1)
@@ -65,17 +65,37 @@ func TestClientRejectsCommandInjectionBeforeDial(t *testing.T) {
 }
 
 func TestClientDoesNotMistakePromptTextInsideOutputForThePrompt(t *testing.T) {
+	fragmentWritten := make(chan struct{})
+	writePrompt := make(chan struct{})
 	address, done := serveOnce(t, func(conn net.Conn) {
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		_, _ = io.WriteString(conn, ">: ")
 		_ = readLine(t, conn)
 		_, _ = io.WriteString(conn, "echo marker\r\nvalue >: marker\r\n")
-		time.Sleep(20 * time.Millisecond)
+		close(fragmentWritten)
+		<-writePrompt
 		_, _ = io.WriteString(conn, ">: ")
 	})
 	client := newTestClient(t, address)
 
-	response, err := client.SendCommand(context.Background(), "echo", "marker")
+	type commandResult struct {
+		response Response
+		err      error
+	}
+	result := make(chan commandResult, 1)
+	go func() {
+		response, err := client.SendCommand(context.Background(), "echo", "marker")
+		result <- commandResult{response: response, err: err}
+	}()
+	<-fragmentWritten
+	select {
+	case early := <-result:
+		t.Fatalf("SendCommand returned before the terminal prompt: response=%#v error=%v", early.response, early.err)
+	default:
+	}
+	close(writePrompt)
+	completed := <-result
+	response, err := completed.response, completed.err
 	if err != nil {
 		t.Fatalf("SendCommand: %v", err)
 	}
@@ -87,7 +107,7 @@ func TestClientDoesNotMistakePromptTextInsideOutputForThePrompt(t *testing.T) {
 
 func TestClientStopsAtConfiguredResponseLimit(t *testing.T) {
 	address, done := serveOnce(t, func(conn net.Conn) {
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		_, _ = io.WriteString(conn, ">: ")
 		_ = readLine(t, conn)
 		_, _ = io.WriteString(conn, strings.Repeat("x", 64))
@@ -136,14 +156,14 @@ func newTestClient(t *testing.T, address string) *Client {
 
 func serveOnce(t *testing.T, handler func(net.Conn)) (string, <-chan struct{}) {
 	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		defer listener.Close()
+		defer func() { _ = listener.Close() }()
 		conn, err := listener.Accept()
 		if err != nil {
 			t.Errorf("accept: %v", err)

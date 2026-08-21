@@ -15,7 +15,7 @@ func TestSessionReusesConnectionAndBecomesTerminalAfterTransportFailure(t *testi
 	var accepted atomic.Int32
 	address, done := serveOnce(t, func(conn net.Conn) {
 		accepted.Add(1)
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		_, _ = io.WriteString(conn, ">: ")
 		if got := readLine(t, conn); got != "uptime\r\n" {
 			t.Errorf("first command = %q", got)
@@ -30,7 +30,7 @@ func TestSessionReusesConnectionAndBecomesTerminalAfterTransportFailure(t *testi
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	if response, err := session.SendCommand(context.Background(), "uptime"); err != nil || response.Output != "1" {
 		t.Fatalf("first response = %#v, error = %v", response, err)
@@ -50,7 +50,7 @@ func TestSessionReusesConnectionAndBecomesTerminalAfterTransportFailure(t *testi
 func TestStreamCommandSendsETXAndRecoversPromptOnCancellation(t *testing.T) {
 	etx := make(chan byte, 1)
 	address, done := serveOnce(t, func(conn net.Conn) {
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		_, _ = io.WriteString(conn, ">: ")
 		if got := readLine(t, conn); got != "log\r\n" {
 			t.Errorf("command = %q", got)
@@ -73,7 +73,7 @@ func TestStreamCommandSendsETXAndRecoversPromptOnCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	writer := &cancelWriter{cancel: cancel}
@@ -101,10 +101,12 @@ func TestStreamCommandSendsETXAndRecoversPromptOnCancellation(t *testing.T) {
 }
 
 func TestSessionCloseUnblocksCommand(t *testing.T) {
+	commandRead := make(chan struct{})
 	address, done := serveOnce(t, func(conn net.Conn) {
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		_, _ = io.WriteString(conn, ">: ")
 		_ = readLine(t, conn)
+		close(commandRead)
 		_, _ = io.Copy(io.Discard, conn)
 	})
 	client := newTestClient(t, address)
@@ -117,7 +119,7 @@ func TestSessionCloseUnblocksCommand(t *testing.T) {
 		_, err := session.SendCommand(context.Background(), "uptime")
 		result <- err
 	}()
-	time.Sleep(20 * time.Millisecond)
+	<-commandRead
 	if err := session.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}

@@ -7,9 +7,12 @@ import (
 )
 
 const (
+	// DefaultAddress is the firmware CLI address on the USB network interface.
 	DefaultAddress = "10.0.4.20:23"
-	Prompt         = ">: "
-	InterruptByte  = byte(3)
+	// Prompt marks the end of a bounded firmware CLI response.
+	Prompt = ">: "
+	// InterruptByte is the ETX byte that stops a continuous firmware command.
+	InterruptByte = byte(3)
 
 	defaultDialTimeout      = 2 * time.Second
 	defaultCommandTimeout   = 5 * time.Second

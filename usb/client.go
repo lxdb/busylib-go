@@ -2,6 +2,7 @@ package usb
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 )
@@ -69,8 +70,8 @@ func (c *Client) SendCommand(ctx context.Context, command string, args ...string
 	if err != nil {
 		return Response{Command: line}, err
 	}
-	defer session.Close()
-	return session.sendLine(ctx, line)
+	response, commandErr := session.sendLine(ctx, line)
+	return response, errors.Join(commandErr, session.Close())
 }
 
 // StreamCommand writes one continuous command to dst over a fresh connection.
@@ -84,8 +85,8 @@ func (c *Client) StreamCommand(ctx context.Context, dst io.Writer, command strin
 	if err != nil {
 		return err
 	}
-	defer session.Close()
-	return session.streamLine(ctx, dst, line)
+	commandErr := session.streamLine(ctx, dst, line)
+	return errors.Join(commandErr, session.Close())
 }
 
 func (c *Client) reboot(ctx context.Context) error {
