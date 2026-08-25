@@ -2,6 +2,7 @@
 
 This directory is a separate Go module.
 Ordinary repository tests do not run it.
+It requires Go 1.25 or newer; the root module remains compatible with Go 1.23.
 
 ## Cloud checks
 
