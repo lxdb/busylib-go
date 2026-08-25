@@ -17,11 +17,6 @@ import (
 	"strings"
 )
 
-type numberedZIPFrame struct {
-	index int
-	file  *zip.File
-}
-
 // ConvertZIP converts a firmware-style ZIP containing meta.json and numbered
 // PNG frames into a device-native animation. It does not close source.
 func ConvertZIP(source io.Reader, filename string, options ...Option) (Result, error) {

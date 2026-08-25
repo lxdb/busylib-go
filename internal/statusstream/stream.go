@@ -3,6 +3,7 @@ package statusstream
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/url"
 	"sync"
@@ -148,6 +149,9 @@ func (s *Stream) Stop() error {
 		closeErr = conn.CloseNow()
 	}
 	<-s.done
+	if errors.Is(closeErr, net.ErrClosed) {
+		return nil
+	}
 	return closeErr
 }
 
