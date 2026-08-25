@@ -27,11 +27,14 @@ func TestStopTreatsAlreadyClosedConnectionAsStopped(t *testing.T) {
 	defer server.Close()
 	defer close(release)
 
-	conn, _, err := websocket.Dial(
+	conn, response, err := websocket.Dial(
 		context.Background(),
 		"ws"+strings.TrimPrefix(server.URL, "http"),
 		nil,
 	)
+	if response != nil && response.Body != nil {
+		defer func() { _ = response.Body.Close() }()
+	}
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
