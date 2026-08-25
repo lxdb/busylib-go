@@ -184,8 +184,13 @@ func TestRemoteStatusStreamReconnectsAfterSubscriptionFailure(t *testing.T) {
 	transport.closeLatestSubscription(t, "sessions/session/up/v1/stream-response/retry")
 	transport.waitSubscriptions(t, 2)
 	transport.waitPublished(t, 2)
-	if status := statusStream.Status(); status.Lifecycle != publicstream.LifecycleConnected || status.Attempt != 1 {
-		t.Fatalf("status after reconnect = %#v", status)
+	deadline := time.After(time.Second)
+	for status := statusStream.Status(); status.Lifecycle != publicstream.LifecycleConnected || status.Attempt != 1; status = statusStream.Status() {
+		select {
+		case <-statusStream.Statuses():
+		case <-deadline:
+			t.Fatalf("status after reconnect = %#v", status)
+		}
 	}
 	if err := statusStream.Stop(); err != nil {
 		t.Fatalf("Stop: %v", err)
