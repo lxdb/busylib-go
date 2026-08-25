@@ -20,8 +20,8 @@ They are fetched as modules and are not vendored in this repository.
 | Module | Version | License |
 | --- | --- | --- |
 | `github.com/coder/websocket` | v1.8.15 | ISC |
-| `google.golang.org/protobuf` | v1.36.8 | BSD-3-Clause |
-| `github.com/eclipse/paho.golang` | v0.22.0 | EPL-2.0 or EDL-1.0 |
+| `google.golang.org/protobuf` | v1.36.12 | BSD-3-Clause |
+| `github.com/eclipse/paho.golang` | v0.23.0 | EPL-2.0 or EDL-1.0 |
 
 The Paho module is used only by the separate physical-device test module.
 Each module contains its complete license text in its upstream distribution.
