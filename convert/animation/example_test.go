@@ -38,7 +38,7 @@ func ExampleConvertZIP() {
 		log.Print(err)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	result, err := animation.ConvertZIP(file, "spinner.zip")
 	if err != nil {
