@@ -34,26 +34,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.27"
+          go-version: stable
           cache-dependency-path: |
             go.sum
             pahotransport/go.sum
-      - uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1
-        with:
-          go-version-input: "1.27"
-          go-package: ./...
-          repo-checkout: false
-      - name: Create local module workspace
-        run: |
-          go work init ./pahotransport
-          go work edit -replace github.com/lxdb/busylib-go=.
-      - uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1
-        with:
-          go-version-input: "1.27"
-          go-package: ./...
-          work-dir: pahotransport
-          cache-dependency-path: pahotransport/go.sum
-          repo-checkout: false
+      - run: scripts/verify.sh security
 
   dependency-review:
     if: ${{ github.event_name == 'pull_request' && !github.event.repository.private }}
