@@ -65,7 +65,8 @@ type ImageResult struct {
 
 // Image decodes PNG, JPEG, or static GIF input, bilinearly downsizes it when
 // necessary, center-crops it to the selected display's maximum dimensions,
-// and returns a PNG payload. Images are never upscaled.
+// and returns a PNG payload. Images are never upscaled. Image does not close
+// source.
 func Image(source io.Reader, target busylib.DisplayTarget, options ...Option) (ImageResult, error) {
 	config := imageConfig{
 		maxInputBytes:   DefaultMaxInputBytes,

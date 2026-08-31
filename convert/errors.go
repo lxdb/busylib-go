@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	// ErrUnsupportedFormat reports an image format that Convert cannot decode.
+	// ErrUnsupportedFormat reports an image format that Image cannot decode.
 	ErrUnsupportedFormat = errors.New("unsupported image format")
 	// ErrAnimatedImage reports GIF input with more than one image frame.
 	ErrAnimatedImage = errors.New("animated GIF input is not supported")

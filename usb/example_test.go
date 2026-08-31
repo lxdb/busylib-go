@@ -3,6 +3,7 @@ package usb_test
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/lxdb/busylib-go/usb"
 )
@@ -13,7 +14,9 @@ func ExampleClient_Commands() {
 		log.Print(err)
 		return
 	}
-	response, err := client.Commands().Uptime(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	response, err := client.Commands().Uptime(ctx)
 	if err != nil {
 		log.Print(err)
 		return

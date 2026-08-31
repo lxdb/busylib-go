@@ -1,55 +1,49 @@
 # Device integration tests
 
-This directory is a separate Go module.
-Ordinary repository tests do not run it.
-It requires Go 1.25 or newer; the root module remains compatible with Go 1.23.
+This directory contains opt-in tests that require a physical BUSY Bar or an external broker. The `device` build tag keeps them out of ordinary unit-test runs.
 
-## Cloud checks
+## Compile without hardware
 
-Hosted CI tests the Paho adapter with the race detector.
-It also compiles and vets the files selected by the `device` build tag.
+Hosted CI can compile and vet the device-tagged files and run broker-backed adapter tests. It cannot establish that a physical device is reachable or compatible.
 
 ```sh
-go test -race -count=1 ./...
-go test -run '^$' -tags=device ./...
-go vet -tags=device ./...
+workspace="$(mktemp -d)/go.work"
+repository="$(pwd)"
+GOWORK="$workspace" go work init "$repository/pahotransport"
+GOWORK="$workspace" go work edit -replace github.com/lxdb/busylib-go="$repository"
+(cd pahotransport && GOWORK="$workspace" go test -race -count=1 ./... && GOWORK="$workspace" go vet ./...)
+GOWORK=off go test -run '^$' -tags=device ./integration/device
+GOWORK=off go vet -tags=device ./integration/device
 ```
 
-The compile command intentionally runs no tests.
-Hosted CI has no physical BUSY Bar.
-A passing cloud job is not device evidence.
+The root `go test` command uses `-run '^$'` so it compiles selected tests without running them. A passing result is compile evidence, not device evidence.
 
-## Local HTTP and WebSocket checks
+## Test local HTTP and WebSocket behavior
 
-Set `BUSYBAR_BASE_URL` to the local device URL.
-Set `BUSYBAR_ACCESS_KEY` only when the device requires it.
+Set `BUSYBAR_BASE_URL` to the local device URL. Set `BUSYBAR_ACCESS_KEY` only when the device requires it.
 
 ```sh
-go test -tags=device -run TestLocalDevice -v
+go test -tags=device -run TestLocalDevice -v ./integration/device
 ```
 
-This runs the local HTTP snapshot and WebSocket lifecycle checks.
-The tests skip when `BUSYBAR_BASE_URL` is not set.
+This command runs the local HTTP snapshot and WebSocket lifecycle checks. The tests skip when `BUSYBAR_BASE_URL` is not set.
 
-## Local USB checks
+## Test USB CLI access
 
-Set `BUSYBAR_USB_ADDRESS` to the CLI address.
+Set `BUSYBAR_USB_ADDRESS` to the CLI address reported for the target device.
 
 ```sh
-go test -tags=device -run TestUSBDevice -v
+go test -tags=device -run TestUSBDevice -v ./integration/device
 ```
 
-The test skips when `BUSYBAR_USB_ADDRESS` is not set.
+The test skips when `BUSYBAR_USB_ADDRESS` is not set. A failure can indicate permissions or descriptor access as well as a library defect.
 
-## Remote checks
+## Broker-backed remote checks
 
-The Paho adapter in `pahotransport` supports MQTT 5.
-Caller setup must provide broker authentication and transport security.
-There is no broker-backed remote test yet.
-Do not treat this module as remote MQTT release evidence until that test exists.
+The Paho adapter test suite exercises MQTT 5 publication, receive delivery, forced connection loss, reconnection, and subscription restoration against its pinned Mosquitto service. Caller configuration remains responsible for broker authentication and transport security.
 
-There is also no physical media upload and read-back test yet.
-Keep that release check open until the device-safe cleanup contract is defined.
+## Release evidence
 
-Do not print access keys, passwords, tokens, or correlation data.
-Record the device model, firmware version, and test command in release evidence.
+Record the device model, firmware version, exact command, and result. Do not record access keys, passwords, tokens, or correlation data.
+
+There is no physical media upload-and-read-back test. Keep that release gate open until an executable test defines safe cleanup behavior.

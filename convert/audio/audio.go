@@ -81,7 +81,8 @@ type Result struct {
 }
 
 // Convert passes through already-ready PCM or invokes ffmpeg for supported
-// audio inputs. The filename extension selects the input behavior.
+// audio inputs. The filename extension selects the input behavior. Convert
+// does not close source.
 func Convert(ctx context.Context, source io.Reader, filename string, options ...Option) (Result, error) {
 	config := config{
 		ffmpegPath:     "ffmpeg",
