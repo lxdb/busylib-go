@@ -76,7 +76,7 @@ Before publication is enabled:
 2. Require the `Conventional Commits`, `CI`, `Contracts`, and `Security` checks on `main` when the repository plan supports branch protection. Otherwise, treat a failed check as a manual release blocker.
 3. Enable GitHub Immutable Releases.
 4. Install a private GitHub App with read and write access to contents, issues, and pull requests.
-5. Store the App ID in `RELEASE_APP_ID` and the PEM private key in `RELEASE_APP_PRIVATE_KEY`.
+5. Store the App Client ID in `RELEASE_APP_CLIENT_ID` and the PEM private key in `RELEASE_APP_PRIVATE_KEY`.
 6. Keep `RELEASES_ENABLED` absent or false until publication is authorized.
 
 The workflow uses a short-lived GitHub App installation token because events created with the default `GITHUB_TOKEN` do not trigger follow-up workflows. If App authentication fails, preparation must fail instead of creating an unverified release pull request.
