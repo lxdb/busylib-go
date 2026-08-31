@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1165,6 +1166,135 @@ func TestAPISemVerCoalescesConcurrentFirstUse(t *testing.T) {
 	if got := versionCalls.Load(); got != 1 {
 		t.Fatalf("versionCalls = %d, want 1", got)
 	}
+}
+
+func TestAPISemVerCanceledLeaderDoesNotPoisonFollower(t *testing.T) {
+	versionStarted := make(chan struct{})
+	releaseVersion := make(chan struct{})
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/version" {
+			t.Errorf("unexpected path %q", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		if calls.Add(1) == 1 {
+			close(versionStarted)
+		}
+		select {
+		case <-releaseVersion:
+			writeJSON(t, w, map[string]string{"api_semver": "25.0.0"})
+		case <-r.Context().Done():
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(WithBaseURL(server.URL))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	leaderCtx, cancelLeader := context.WithCancel(context.Background())
+	leaderResult := make(chan error, 1)
+	go func() {
+		_, err := client.APISemVer(leaderCtx)
+		leaderResult <- err
+	}()
+	<-versionStarted
+
+	followerResult := make(chan error, 1)
+	go func() {
+		_, err := client.APISemVer(context.Background())
+		followerResult <- err
+	}()
+	waitForVersionWaiters(t, client, 2)
+	cancelLeader()
+	if err := <-leaderResult; !errors.Is(err, context.Canceled) {
+		t.Fatalf("leader error = %v, want context.Canceled", err)
+	}
+	close(releaseVersion)
+	if err := <-followerResult; err != nil {
+		t.Fatalf("follower error = %v, want success", err)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("version calls = %d, want 1", got)
+	}
+}
+
+func TestAPISemVerCancelsRefreshAfterAllWaitersLeave(t *testing.T) {
+	firstStarted := make(chan struct{})
+	firstCanceled := make(chan struct{})
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/version" {
+			t.Errorf("unexpected path %q", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		if calls.Add(1) == 1 {
+			close(firstStarted)
+			<-r.Context().Done()
+			close(firstCanceled)
+			return
+		}
+		writeJSON(t, w, map[string]string{"api_semver": "25.0.0"})
+	}))
+	defer server.Close()
+
+	client, err := NewClient(WithBaseURL(server.URL))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	firstCtx, cancelFirst := context.WithCancel(context.Background())
+	secondCtx, cancelSecond := context.WithCancel(context.Background())
+	results := make(chan error, 2)
+	go func() {
+		_, err := client.APISemVer(firstCtx)
+		results <- err
+	}()
+	<-firstStarted
+	go func() {
+		_, err := client.APISemVer(secondCtx)
+		results <- err
+	}()
+	waitForVersionWaiters(t, client, 2)
+	cancelFirst()
+	cancelSecond()
+	for range 2 {
+		if err := <-results; !errors.Is(err, context.Canceled) {
+			t.Fatalf("waiter error = %v, want context.Canceled", err)
+		}
+	}
+	select {
+	case <-firstCanceled:
+	case <-time.After(time.Second):
+		t.Fatal("shared version request was not canceled")
+	}
+
+	if got, err := client.APISemVer(context.Background()); err != nil || got != "25.0.0" {
+		t.Fatalf("fresh APISemVer = %q, %v; want 25.0.0", got, err)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("version calls = %d, want 2", got)
+	}
+}
+
+func waitForVersionWaiters(t *testing.T, client *Client, want int) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		client.versionMu.Lock()
+		refresh := client.versionInFlight
+		got := 0
+		if refresh != nil {
+			got = refresh.waiters
+		}
+		client.versionMu.Unlock()
+		if got == want {
+			return
+		}
+		runtime.Gosched()
+	}
+	t.Fatalf("version refresh did not reach %d waiters", want)
 }
 
 func TestRefreshAPISemVerForcesVersionRequest(t *testing.T) {

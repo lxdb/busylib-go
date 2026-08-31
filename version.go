@@ -10,14 +10,19 @@ type versionInfo struct {
 }
 
 type versionRefresh struct {
-	done  chan struct{}
-	value string
-	err   error
+	done    chan struct{}
+	cancel  context.CancelFunc
+	waiters int
+	value   string
+	err     error
 }
 
 // APISemVer returns the device API semantic version.
 // It caches a successful response and coalesces concurrent first requests.
 func (c *Client) APISemVer(ctx context.Context) (string, error) {
+	if ctx == nil {
+		return "", versionError("GET", "/api/version", "", "context must not be nil", nil)
+	}
 	c.versionMu.Lock()
 	if c.apiSemVer != "" {
 		apiSemVer := c.apiSemVer
@@ -26,35 +31,65 @@ func (c *Client) APISemVer(ctx context.Context) (string, error) {
 	}
 	if c.versionInFlight != nil {
 		refresh := c.versionInFlight
+		refresh.waiters++
 		c.versionMu.Unlock()
-		select {
-		case <-refresh.done:
-			if refresh.err != nil {
-				return "", refresh.err
-			}
-			return refresh.value, nil
-		case <-ctx.Done():
-			return "", versionError("GET", "/api/version", "", "", ctx.Err())
-		}
+		return c.waitForVersionRefresh(ctx, refresh)
 	}
 
-	refresh := &versionRefresh{done: make(chan struct{})}
+	refreshCtx, cancel := context.WithCancel(context.Background())
+	refresh := &versionRefresh{
+		done:    make(chan struct{}),
+		cancel:  cancel,
+		waiters: 1,
+	}
 	c.versionInFlight = refresh
 	c.versionMu.Unlock()
 
+	go c.runVersionRefresh(refreshCtx, refresh)
+	return c.waitForVersionRefresh(ctx, refresh)
+}
+
+func (c *Client) runVersionRefresh(ctx context.Context, refresh *versionRefresh) {
 	value, err := c.fetchAPISemVer(ctx)
 
 	c.versionMu.Lock()
-	if err == nil {
-		c.apiSemVer = value
+	if c.versionInFlight == refresh {
+		if err == nil {
+			c.apiSemVer = value
+		}
+		c.versionInFlight = nil
 	}
 	refresh.value = value
 	refresh.err = err
-	c.versionInFlight = nil
 	close(refresh.done)
 	c.versionMu.Unlock()
+	refresh.cancel()
+}
 
-	return value, err
+func (c *Client) waitForVersionRefresh(ctx context.Context, refresh *versionRefresh) (string, error) {
+	select {
+	case <-refresh.done:
+		if refresh.err != nil {
+			return "", refresh.err
+		}
+		return refresh.value, nil
+	case <-ctx.Done():
+		c.releaseVersionWaiter(refresh)
+		return "", versionError("GET", "/api/version", "", "", ctx.Err())
+	}
+}
+
+func (c *Client) releaseVersionWaiter(refresh *versionRefresh) {
+	c.versionMu.Lock()
+	defer c.versionMu.Unlock()
+	if c.versionInFlight != refresh {
+		return
+	}
+	refresh.waiters--
+	if refresh.waiters == 0 {
+		c.versionInFlight = nil
+		refresh.cancel()
+	}
 }
 
 // RefreshAPISemVer fetches the current device API semantic version and replaces
