@@ -34,13 +34,33 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - id: protobuf-source
+        shell: bash
+        run: |
+          source scripts/protobuf-source.env
+          echo "repository=$PROTOBUF_SOURCE_REPOSITORY" >> "$GITHUB_OUTPUT"
+          echo "revision=$PROTOBUF_SOURCE_REVISION" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ steps.protobuf-source.outputs.repository }}
+          ref: ${{ steps.protobuf-source.outputs.revision }}
+          path: busybar-protobuf
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: "1.27"
           cache-dependency-path: go.sum
+      - id: protobuf-tools
+        shell: bash
+        run: |
+          source scripts/protobuf-tools.env
+          echo "version=${PROTOC_VERSION#libprotoc }" >> "$GITHUB_OUTPUT"
       - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
-          version: "35.1"
+          version: ${{ steps.protobuf-tools.outputs.version }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - run: scripts/check-protobuf.sh
+        env:
+          BUSYLIB_GO_PROTO_SRC: ${{ github.workspace }}/busybar-protobuf
       - run: go test ./internal/api/...
+        env:
+          BUSYLIB_GO_PROTO_SRC: ${{ github.workspace }}/busybar-protobuf

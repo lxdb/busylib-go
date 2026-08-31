@@ -1,16 +1,16 @@
-# proto_path	go_package_suffix
-state.proto	proto/statepb
-state/device_name.proto	proto/statepb
-state/brightness.proto	proto/statepb
-state/power.proto	proto/statepb
-state/audio.proto	proto/statepb
-state/wifi.proto	proto/statepb
-state/timezone.proto	proto/statepb
-state/matter.proto	proto/statepb
-state/ble.proto	proto/blepb
-state/update.proto	proto/updatepb
-frame.proto	proto/framepb
-timer.proto	proto/timerpb
-input.proto	proto/inputpb
-error.proto	proto/errorpb
-util/json.proto	proto/utilpb
+# proto_path	go_package_suffix	sha256
+state.proto	proto/statepb	17d30cc7d7959eb8b536e2bfc9e14e7211946a11efacddff27b8e80235ad06cd
+state/device_name.proto	proto/statepb	f918b1ea0bc96b3e470c4fdd2f2d4da3cda70b5540277783dc97e5ba978e47eb
+state/brightness.proto	proto/statepb	8aee7f9eef858b798db4a39f6fb985441bac8677b7851b211b329b3cefcf3f03
+state/power.proto	proto/statepb	2726e19c931884901dbab571752838e04dc8813a9065beeb71c9960002399847
+state/audio.proto	proto/statepb	ed67f1645e4c6df131cafacea2d0c0aec327d5118f8dd6106fb822282da6fa0f
+state/wifi.proto	proto/statepb	ccaa35cbae1c28a127b375199af244cf0d317babb981612a19f5d5b6e6452d50
+state/timezone.proto	proto/statepb	04f6bec74ddbab62a9ca7c2867f6c9b6e6f67b1d710808ad7d9595e187da75c4
+state/matter.proto	proto/statepb	2e02914fccec11c9f831df563f94205a508d61c44648f0c5bc94f9a42e55fd14
+state/ble.proto	proto/blepb	006c0973864b9b0f6284bca1bd36517a8dcc9ea1e3db15063509aa30e587b010
+state/update.proto	proto/updatepb	9f9fedd020523a595a7da817a0468416e0b30a61bf38ad73b3beb616e439de15
+frame.proto	proto/framepb	891256c0510e6d2da7657346f37a5c21fb6bb91c17b96906502234cfa7176c48
+timer.proto	proto/timerpb	d729aaaa994213c154cac33503a368c6b18331e98f88482c5a81554801c88930
+input.proto	proto/inputpb	087a72766a024a80eeb379fcb6546f8a67aab0f37c3759b2bf13732a71b556c1
+error.proto	proto/errorpb	33f68eaf46db94c7ff4ec46e68f4c628da7bb5d331ebd4015cdbaf24a4d8b83c
+util/json.proto	proto/utilpb	c3cbd9c97288996469bea7d97352c342e61c1e95fe0b85241115cb92b954d25e

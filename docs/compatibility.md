@@ -9,7 +9,8 @@ This page records the compatibility contract that maintainers must check when a 
 | Root Go toolchain | `go.mod` |
 | Paho adapter Go toolchain | `pahotransport/go.mod` |
 | Firmware API contract and audited revisions | `internal/api/testdata/firmware-contract.json` |
-| Generated protobuf source mapping | `scripts/protobuf-packages.tsv` |
+| Protobuf repository, CI revision, and frame-options digest | `scripts/protobuf-source.env` |
+| Generated protobuf mapping and source digests | `scripts/protobuf-packages.tsv` |
 | CI operating systems and commands | `.github/workflows/ci.yml` |
 | Release module order and tag format | `release-please-config.json` |
 
@@ -27,9 +28,7 @@ Callers can disable discovery with `busylib.WithVersionNegotiation(busylib.Versi
 
 ## Generated protobuf code
 
-Files under `proto` are generated from the copied upstream sources in `internal/protosrc/bsb-protobuf`. Do not edit generated `.pb.go` files by hand. Regenerate them with the repository scripts, review the recorded source revision and package mapping, and run the focused protobuf tests.
-
-The generated code remains subject to the redistribution condition in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
+Files under `proto` are generated from the sibling `../busybar-protobuf` checkout by default. `BUSYLIB_GO_PROTO_SRC` selects another checkout. Do not edit generated `.pb.go` files by hand. The generator verifies the upstream license, every mapped schema digest, and the complete schema inventory before producing code.
 
 ## Platforms
 

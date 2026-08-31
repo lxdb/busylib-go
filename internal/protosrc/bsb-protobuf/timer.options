@@ -1,2 +1,0 @@
-BSB_Timer.Profile.name max_length:15
-BSB_Timer.Profiles.profiles type:FT_POINTER

@@ -2,6 +2,7 @@ package api
 
 import (
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -60,7 +61,7 @@ func TestFirmwareContractStatusStreamMatchesGeneratedProtobuf(t *testing.T) {
 	}
 }
 
-func TestFirmwareContractFramesMatchDecoderAndSelectedProtobuf(t *testing.T) {
+func TestFirmwareContractFramesMatchDecoderAndGeneratedProtobuf(t *testing.T) {
 	contract, err := LoadContractFile("testdata/firmware-contract.json")
 	if err != nil {
 		t.Fatalf("load firmware contract: %v", err)
@@ -91,7 +92,11 @@ func TestFirmwareContractFramesMatchDecoderAndSelectedProtobuf(t *testing.T) {
 		t.Fatalf("generated frame enums = %d encodings/%d formats", len(framepb.Encoding_name), len(framepb.PixelFormat_name))
 	}
 
-	options, err := os.ReadFile("../protosrc/bsb-protobuf/frame.options")
+	protoSource := os.Getenv("BUSYLIB_GO_PROTO_SRC")
+	if protoSource == "" {
+		t.Skip("BUSYLIB_GO_PROTO_SRC is required to verify frame.options")
+	}
+	options, err := os.ReadFile(filepath.Join(protoSource, "frame.options"))
 	if err != nil {
 		t.Fatalf("read selected frame options: %v", err)
 	}

@@ -1,7 +1,0 @@
-syntax = "proto3";
-
-package BSB_State;
-
-message DeviceName {
-    string name = 1;
-}
