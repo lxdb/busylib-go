@@ -28,6 +28,27 @@ jobs:
           cache-dependency-path: go.sum
       - run: go test ./...
 
+  paho-minimum-go:
+    name: Go 1.24 (Paho, pure Go)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.24"
+          cache-dependency-path: |
+            go.sum
+            pahotransport/go.sum
+      - name: Create local module workspace
+        run: |
+          go work init ./pahotransport
+          go work edit -replace github.com/lxdb/busylib-go=.
+      - run: go test ./...
+        working-directory: pahotransport
+
   macos:
     name: macOS
     runs-on: macos-latest
@@ -69,30 +90,51 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.26"
+          go-version: "1.27"
           cache-dependency-path: go.sum
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
         with:
           version: v2.12.2
+      - name: Create local module workspace
+        run: |
+          go work init ./pahotransport
+          go work edit -replace github.com/lxdb/busylib-go=.
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
+        with:
+          version: v2.12.2
+          working-directory: pahotransport
 
   integration-harness:
     name: Integration harness
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: integration/device
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.26"
+          go-version: "1.27"
           cache-dependency-path: |
             go.sum
-            integration/device/go.sum
-      - name: Test adapter with race detector
+            pahotransport/go.sum
+      - name: Create local module workspace
+        run: |
+          go work init ./pahotransport
+          go work edit -replace github.com/lxdb/busylib-go=.
+      - name: Start MQTT 5 broker
+        run: >-
+          docker run -d --rm --name busylib-go-mqtt
+          -p 18883:1883
+          -v "$GITHUB_WORKSPACE/pahotransport/testdata/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro"
+          eclipse-mosquitto@sha256:212f89e1eaeb2c322d6441b64396e3346026674db8fa9c27beac293405c32b3c
+      - name: Test adapter with race detector and broker reconnect
+        working-directory: pahotransport
+        env:
+          BUSYLIB_MQTT_BROKER_URL: mqtt://127.0.0.1:18883
         run: go test -race -count=1 ./...
       - name: Compile physical-device tests
-        run: go test -run '^$' -tags=device ./...
+        run: GOWORK=off go test -run '^$' -tags=device ./integration/device
       - name: Vet adapter and physical-device tests
-        run: go vet -tags=device ./...
+        run: (cd pahotransport && go vet ./...) && GOWORK=off go vet -tags=device ./integration/device
+      - name: Stop MQTT 5 broker
+        if: always()
+        run: docker stop busylib-go-mqtt || true
