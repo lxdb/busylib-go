@@ -48,6 +48,8 @@ scripts/verify.sh device
 
 `BUSYBAR_ACCESS_KEY` is optional when the local HTTP API requires it. The harness fails before testing if either required address is absent.
 
+The device phase also uploads media under a unique application name, verifies its contents, and removes the test assets.
+
 ## GitHub-only services
 
 CodeQL, pull-request dependency review, pull-request title validation, and release publication depend on GitHub event or service state. They remain supplemental workflow checks; they do not replace `scripts/verify.sh`. A release candidate requires both a passing local release harness and the applicable GitHub service checks.

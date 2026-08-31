@@ -22,7 +22,7 @@ BUSYBAR_USB_ADDRESS=device-usb-address \
 scripts/verify.sh device
 ```
 
-The harness runs the local HTTP snapshot and WebSocket lifecycle checks. It requires both addresses so a release verification cannot pass through skipped tests. Set `BUSYBAR_ACCESS_KEY` only when the device requires it.
+The harness runs local HTTP snapshot, WebSocket lifecycle, media upload/read-back/cleanup, and USB checks. It requires both addresses so release verification cannot pass through skipped tests. Set `BUSYBAR_ACCESS_KEY` only when the device requires it.
 
 ## Test USB CLI access
 
@@ -38,4 +38,4 @@ The Paho adapter test suite exercises MQTT 5 publication, receive delivery, forc
 
 Record the device model, firmware version, exact command, and result. Do not record access keys, passwords, tokens, or correlation data.
 
-There is no physical media upload-and-read-back test. Keep that release gate open until an executable test defines safe cleanup behavior.
+The media test uses a unique application name and verifies that its uploaded assets are removed.

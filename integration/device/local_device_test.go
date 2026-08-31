@@ -3,7 +3,9 @@
 package device_test
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -76,6 +78,59 @@ func TestLocalDeviceStatusStreamLifecycle(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatalf("status stream message: %v", ctx.Err())
+	}
+}
+
+func TestLocalDeviceAssetUploadReadBackAndCleanup(t *testing.T) {
+	client := newLocalDeviceClient(t)
+	applicationName := fmt.Sprintf("busylib-go-%x", time.Now().UnixNano())
+	const fileName = "release-probe.bin"
+	devicePath := "/ext/user_assets/" + applicationName + "/" + fileName
+	payload := []byte("busylib-go physical media probe\n")
+
+	cleanupNeeded := true
+	t.Cleanup(func() {
+		if !cleanupNeeded {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := client.Assets().DeleteApplicationAssets(ctx, applicationName); err != nil {
+			t.Errorf("cleanup application assets: %v", err)
+		}
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := client.Assets().Upload(ctx, busylib.UploadAssetRequest{
+		ApplicationName: applicationName,
+		File:            fileName,
+		Body:            busylib.BytesBody(payload, "application/octet-stream"),
+	}); err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+
+	got, err := client.Storage().Read(ctx, devicePath)
+	if err != nil {
+		t.Fatalf("Read uploaded asset: %v", err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("uploaded asset = %q, want %q", got, payload)
+	}
+
+	if err := client.Assets().DeleteApplicationAssets(ctx, applicationName); err != nil {
+		t.Fatalf("DeleteApplicationAssets: %v", err)
+	}
+	cleanupNeeded = false
+
+	assets, err := client.Storage().List(ctx, "/ext/user_assets")
+	if err != nil {
+		t.Fatalf("List user assets after cleanup: %v", err)
+	}
+	for _, asset := range assets.List {
+		if asset.Name == applicationName {
+			t.Fatalf("application asset directory %q remains after cleanup", applicationName)
+		}
 	}
 }
 

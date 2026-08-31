@@ -18,7 +18,7 @@ Do not enable release publication until all applicable gates have evidence:
 - The selected Go releases use their latest security patches.
 - Local HTTP, local WebSocket, and USB checks pass on a physical BUSY Bar.
 - Broker-backed MQTT connection loss, reconnection, and subscription restoration pass.
-- Physical media upload remains blocked until an executable upload-and-cleanup test exists.
+- Physical media upload, read-back, and cleanup pass without leaving test assets.
 - Public API changes since the previous tag have been reviewed for compatibility.
 - Examples compile against the release candidate.
 - Required repository security controls are active, or an unavailable control is recorded as a manual blocker.
