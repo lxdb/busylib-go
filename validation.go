@@ -688,9 +688,9 @@ func validateVolume(volume int) error {
 	return nil
 }
 
-func validateScreenDisplay(display int) error {
-	if display != 0 && display != 1 {
-		return errors.New("display must be 0 or 1")
+func validateScreenDisplay(display DisplayTarget) error {
+	if display != DisplayFront && display != DisplayBack {
+		return errors.New("display must be front or back")
 	}
 	return nil
 }

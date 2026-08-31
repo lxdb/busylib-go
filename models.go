@@ -1,6 +1,10 @@
 package busylib
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/lxdb/busylib-go/display"
+)
 
 // SuccessResponse contains the result text from a successful device operation.
 type SuccessResponse struct {
@@ -147,13 +151,13 @@ type BaseDisplayElement struct {
 }
 
 // DisplayTarget selects a physical device display.
-type DisplayTarget string
+type DisplayTarget = display.Target
 
 const (
 	// DisplayFront targets the front display.
-	DisplayFront DisplayTarget = "front"
+	DisplayFront = display.Front
 	// DisplayBack targets the back display.
-	DisplayBack DisplayTarget = "back"
+	DisplayBack = display.Back
 )
 
 // DisplayAlign selects the anchor point for an element.

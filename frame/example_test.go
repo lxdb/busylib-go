@@ -1,24 +1,23 @@
 package frame_test
 
 import (
-	"image"
-	"log"
+	"fmt"
 
+	busylib "github.com/lxdb/busylib-go"
 	"github.com/lxdb/busylib-go/frame"
 )
 
 func ExampleFromHTTP() {
 	raw := make([]byte, frame.FrontWidth*frame.FrontHeight*3)
-	value, err := frame.FromHTTP(0, raw)
+	value, err := frame.FromHTTP(busylib.DisplayFront, raw)
 	if err != nil {
-		log.Print(err)
 		return
 	}
-	var decoded image.Image
-	decoded, err = value.RGBA()
+	decoded, err := value.RGBA()
 	if err != nil {
-		log.Print(err)
 		return
 	}
-	_ = decoded
+	fmt.Println(decoded.Bounds())
+	// Output:
+	// (0,0)-(72,16)
 }

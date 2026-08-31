@@ -258,15 +258,19 @@ func (s DisplayService) Clear(ctx context.Context, applicationName string) error
 	return s.client.doSuccess(ctx, http.MethodDelete, "/api/display/draw", query, nil)
 }
 
-// Screen returns a decoded image of the selected display.
-func (s DisplayService) Screen(ctx context.Context, display int) ([]byte, error) {
+// Screen returns the decoded pixels of the selected display.
+func (s DisplayService) Screen(ctx context.Context, display DisplayTarget) ([]byte, error) {
 	if err := validateScreenDisplay(display); err != nil {
 		return nil, validationError(http.MethodGet, "/api/screen", err.Error(), err)
+	}
+	displayNumber := 0
+	if display == DisplayBack {
+		displayNumber = 1
 	}
 	response, err := s.client.Do(ctx, Request{
 		Method:       http.MethodGet,
 		Path:         "/api/screen",
-		Query:        url.Values{"display": []string{strconv.Itoa(display)}},
+		Query:        url.Values{"display": []string{strconv.Itoa(displayNumber)}},
 		ResponseMode: ResponseModeBytes,
 	})
 	if err != nil {

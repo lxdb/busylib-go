@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"testing"
 
+	"github.com/lxdb/busylib-go/display"
 	"github.com/lxdb/busylib-go/proto/framepb"
 )
 
@@ -14,7 +15,7 @@ func TestFromHTTPFrontPreservesRawAndConvertsBGRToRGBA(t *testing.T) {
 	raw := make([]byte, FrontWidth*FrontHeight*3)
 	raw[0], raw[1], raw[2] = 0x11, 0x22, 0x33
 
-	got, err := FromHTTP(int(framepb.Screen_FRONT), raw)
+	got, err := FromHTTP(display.Front, raw)
 	if err != nil {
 		t.Fatalf("FromHTTP: %v", err)
 	}
@@ -58,7 +59,7 @@ func TestFromHTTPBackConvertsLowNibbleFirstL4ToRGBA(t *testing.T) {
 	raw := make([]byte, BackWidth*BackHeight/2)
 	raw[0] = 0xf1
 
-	got, err := FromHTTP(int(framepb.Screen_BACK), raw)
+	got, err := FromHTTP(display.Back, raw)
 	if err != nil {
 		t.Fatalf("FromHTTP: %v", err)
 	}
@@ -83,19 +84,19 @@ func TestFromHTTPBackConvertsLowNibbleFirstL4ToRGBA(t *testing.T) {
 
 func TestFromHTTPRejectsUnknownDisplayAndWrongPayloadLength(t *testing.T) {
 	tests := []struct {
-		name    string
-		display int
-		data    []byte
-		want    error
+		name   string
+		target display.Target
+		data   []byte
+		want   error
 	}{
-		{name: "unknown display", display: 2, want: ErrUnsupportedScreen},
-		{name: "short front", display: 0, data: make([]byte, FrontWidth*FrontHeight*3-1), want: ErrInvalidFrame},
-		{name: "long back", display: 1, data: make([]byte, BackWidth*BackHeight/2+1), want: ErrInvalidFrame},
+		{name: "unknown display", target: display.Target("side"), want: ErrUnsupportedScreen},
+		{name: "short front", target: display.Front, data: make([]byte, FrontWidth*FrontHeight*3-1), want: ErrInvalidFrame},
+		{name: "long back", target: display.Back, data: make([]byte, BackWidth*BackHeight/2+1), want: ErrInvalidFrame},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := FromHTTP(test.display, test.data)
+			_, err := FromHTTP(test.target, test.data)
 			if !errors.Is(err, test.want) {
 				t.Fatalf("FromHTTP error = %v, want %v", err, test.want)
 			}

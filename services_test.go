@@ -165,7 +165,7 @@ func serviceRequestCases(t *testing.T) []serviceRequestCase {
 		{
 			name: "display screen bytes",
 			call: func(ctx context.Context, client *Client) error {
-				got, err := client.Display().Screen(ctx, 1)
+				got, err := client.Display().Screen(ctx, DisplayBack)
 				if err != nil {
 					return err
 				}
@@ -803,7 +803,7 @@ func TestDisplayGlobalClearAndFrontScreenFetch(t *testing.T) {
 	if err := client.Display().Clear(context.Background(), ""); err != nil {
 		t.Fatalf("Clear global: %v", err)
 	}
-	frame, err := client.Display().Screen(context.Background(), 0)
+	frame, err := client.Display().Screen(context.Background(), DisplayFront)
 	if err != nil {
 		t.Fatalf("Screen front: %v", err)
 	}
@@ -833,11 +833,11 @@ func TestDisplayScreenFrameDecodesHTTPResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	payload, err := client.Display().Screen(context.Background(), 0)
+	payload, err := client.Display().Screen(context.Background(), DisplayFront)
 	if err != nil {
 		t.Fatalf("Screen: %v", err)
 	}
-	value, err := framepkg.FromHTTP(0, payload)
+	value, err := framepkg.FromHTTP(DisplayFront, payload)
 	if err != nil {
 		t.Fatalf("FromHTTP: %v", err)
 	}
@@ -866,7 +866,7 @@ func TestDisplayScreenRejectsInvalidFirmwareBase64Payload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	_, err = client.Display().Screen(context.Background(), 0)
+	_, err = client.Display().Screen(context.Background(), DisplayFront)
 	var protocolErr *ProtocolError
 	if !errors.As(err, &protocolErr) {
 		t.Fatalf("Screen error = %T %v, want ProtocolError", err, err)
@@ -1130,7 +1130,7 @@ func TestServiceValidationRejectsInvalidInputsBeforeNetwork(t *testing.T) {
 		{"draw", func() error {
 			return client.Display().Draw(ctx, DisplayElements{ApplicationName: "app", Priority: DefaultDisplayPriority})
 		}},
-		{"screen", func() error { _, err := client.Display().Screen(ctx, 2); return err }},
+		{"screen", func() error { _, err := client.Display().Screen(ctx, DisplayTarget("side")); return err }},
 		{"audio play", func() error {
 			return client.Audio().Play(ctx, PlayAudio{ApplicationName: "app", Path: "a.snd", StockPath: "shared/a.snd"})
 		}},

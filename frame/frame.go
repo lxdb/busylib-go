@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 
+	"github.com/lxdb/busylib-go/display"
 	"github.com/lxdb/busylib-go/proto/framepb"
 )
 
@@ -32,11 +33,13 @@ type Frame struct {
 	Raw         []byte
 }
 
-// FromHTTP describes an uncompressed frame returned by GET /api/screen.
-func FromHTTP(display int, raw []byte) (Frame, error) {
+// FromHTTP returns an uncompressed frame from decoded GET /api/screen bytes.
+// It rejects unknown targets and payloads whose length does not match the
+// selected display.
+func FromHTTP(target display.Target, raw []byte) (Frame, error) {
 	var value Frame
-	switch display {
-	case int(framepb.Screen_FRONT):
+	switch target {
+	case display.Front:
 		value = Frame{
 			Screen:      framepb.Screen_FRONT,
 			Width:       FrontWidth,
@@ -44,7 +47,7 @@ func FromHTTP(display int, raw []byte) (Frame, error) {
 			Encoding:    framepb.Encoding_PLAIN,
 			PixelFormat: framepb.PixelFormat_RGB888,
 		}
-	case int(framepb.Screen_BACK):
+	case display.Back:
 		value = Frame{
 			Screen:      framepb.Screen_BACK,
 			Width:       BackWidth,
@@ -53,7 +56,7 @@ func FromHTTP(display int, raw []byte) (Frame, error) {
 			PixelFormat: framepb.PixelFormat_L4,
 		}
 	default:
-		return Frame{}, frameError("from_http", Frame{Screen: framepb.Screen(display)}, ErrUnsupportedScreen)
+		return Frame{}, frameError("from_http", Frame{}, ErrUnsupportedScreen)
 	}
 
 	want, err := value.pixelDataSize()
