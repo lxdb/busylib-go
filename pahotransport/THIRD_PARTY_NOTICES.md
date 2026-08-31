@@ -2,7 +2,7 @@
 
 This file records third-party material used by the optional Paho adapter module. Dependency versions remain owned by `go.mod` and `go.sum`.
 
-The module is distributed under the MIT License in `LICENSE`. It depends on the root `github.com/lxdb/busylib-go` module and must not be published before the root module’s protobuf redistribution blocker is resolved.
+The module is distributed under the MIT License in `LICENSE`. It depends on the root `github.com/lxdb/busylib-go` module and is subject to that module’s third-party notices.
 
 | Module | License |
 | --- | --- |

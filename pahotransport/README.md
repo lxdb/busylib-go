@@ -2,9 +2,6 @@
 
 `pahotransport` is an optional Go module that adapts Eclipse Paho MQTT 5 to `github.com/lxdb/busylib-go/remote`. The separate module keeps a concrete MQTT implementation out of the root library.
 
-> [!WARNING]
-> This module cannot be published before the root module’s protobuf redistribution blocker is resolved. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
 ## Requirements
 
 Read `go.mod` for this module’s Go version and minimum root-module requirement. When the root requirement changes, update it in the same change and test the declared dependency with workspaces disabled after that root version is public.

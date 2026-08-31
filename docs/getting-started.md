@@ -2,9 +2,6 @@
 
 This guide connects to a BUSY Bar on the local network, reads its status, and explains the error and upload contracts that callers must handle.
 
-> [!NOTE]
-> No public module version is available while the redistribution condition in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) remains unresolved. Use an authorized checkout for development; do not publish or redistribute it.
-
 ## Create a client
 
 `NewClient` validates the base URL and creates a local HTTP client. Give every request a deadline so that unreachable devices do not block the caller indefinitely.

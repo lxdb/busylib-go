@@ -13,7 +13,7 @@ The adapter’s `go.mod` defines its minimum compatible root version. The module
 
 Do not enable release publication until all applicable gates have evidence:
 
-- Compatible permission covers the copied protobuf inputs and generated Go packages.
+- The protobuf source checkout matches the recorded license, inventory, and schema digests.
 - Root and adapter module tests, race tests, vet, lint, security, contract, generation, and coverage checks pass.
 - The selected Go releases use their latest security patches.
 - Local HTTP, local WebSocket, and USB checks pass on a physical BUSY Bar.

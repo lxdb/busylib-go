@@ -2,9 +2,6 @@
 
 `busylib-go` is a Go client library for BUSY Bar devices and remote MQTT workflows. It provides typed clients for device control, status streams, media preparation, frame decoding, snapshots, and USB CLI access.
 
-> [!WARNING]
-> Public distribution is blocked by the protobuf redistribution condition documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Do not publish, tag, or redistribute this module until that condition is resolved.
-
 ## What the library provides
 
 - Local device control over HTTP, with firmware API version negotiation.
@@ -62,4 +59,4 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing code or documentation. U
 
 ## License
 
-The project is licensed under the MIT License. See [LICENSE](LICENSE), [NOTICE](NOTICE), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The project license does not remove the separate redistribution condition described in the third-party notices.
+The project is licensed under the MIT License. See [LICENSE](LICENSE), [NOTICE](NOTICE), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
