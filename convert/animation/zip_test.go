@@ -281,6 +281,30 @@ func TestConvertZIPEnforcesInputExpandedAndOutputLimits(t *testing.T) {
 	}
 }
 
+func TestConvertZIPStopsDecodingWhenOutputLimitIsAlreadyExceeded(t *testing.T) {
+	validPNG := encodeTestPNG(t, image.Rect(0, 0, 1, 1), color.NRGBA{R: 1, G: 2, B: 3, A: 0xff})
+	if len(validPNG) < 33 {
+		t.Fatalf("PNG fixture has %d bytes, want at least the signature and IHDR", len(validPNG))
+	}
+	configOnlyPNG := append([]byte(nil), validPNG[:33]...)
+	if _, err := png.DecodeConfig(bytes.NewReader(configOnlyPNG)); err != nil {
+		t.Fatalf("truncated PNG must retain a valid configuration: %v", err)
+	}
+	if _, err := png.Decode(bytes.NewReader(configOnlyPNG)); err == nil {
+		t.Fatal("truncated PNG unexpectedly decoded")
+	}
+	archive := makeTestZIP(t,
+		testZIPEntry{name: "sample/meta.json", data: []byte(`{"fps":30,"color_mode":"rgb888","sections":[]}`)},
+		testZIPEntry{name: "sample/frame_0.png", data: validPNG},
+		testZIPEntry{name: "sample/frame_1.png", data: configOnlyPNG},
+	)
+
+	_, err := ConvertZIP(bytes.NewReader(archive), "sample.zip", WithMaxOutputBytes(63))
+	if !errors.Is(err, ErrOutputTooLarge) {
+		t.Fatalf("ConvertZIP error = %v, want ErrOutputTooLarge before the second pixel decode", err)
+	}
+}
+
 func TestConvertZIPRejectsMalformedArchiveAndFilename(t *testing.T) {
 	for _, test := range []struct {
 		name     string

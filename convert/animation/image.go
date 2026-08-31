@@ -36,7 +36,6 @@ func EncodeImages(frames []ImageFrame, fps int, options ...Option) (Result, erro
 		))
 	}
 
-	rawFrames := make([]RGB888Frame, 0, len(frames))
 	for index, frame := range frames {
 		if imageIsNil(frame.Image) {
 			return Result{}, conversionError("validate", index, "", ErrInvalidFrame)
@@ -47,17 +46,35 @@ func EncodeImages(frames []ImageFrame, fps int, options ...Option) (Result, erro
 				"%w: dimensions are %dx%d, want %dx%d", ErrInvalidFrame, bounds.Dx(), bounds.Dy(), width, height,
 			))
 		}
-		pixels := make([]byte, 0, width*height*3)
-		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-			for x := bounds.Min.X; x < bounds.Max.X; x++ {
-				pixel := color.NRGBAModel.Convert(frame.Image.At(x, y)).(color.NRGBA)
-				pixels = append(pixels, pixel.B, pixel.G, pixel.R)
-			}
-		}
-		rawFrames = append(rawFrames, RGB888Frame{PixelsBGR: pixels, Duration: frame.Duration})
 	}
 
-	return EncodeRGB888(rawFrames, RGB888Config{Width: width, Height: height, FPS: fps}, options...)
+	conversionConfig, err := newConfig(options)
+	if err != nil {
+		return Result{}, err
+	}
+	return encodeFrames(
+		len(frames),
+		RGB888Config{Width: width, Height: height, FPS: fps},
+		conversionConfig,
+		func(index int, pixels []byte) (uint8, string, error) {
+			fillImagePixels(pixels, frames[index].Image)
+			return frames[index].Duration, "", nil
+		},
+	)
+}
+
+func fillImagePixels(pixels []byte, source image.Image) {
+	bounds := source.Bounds()
+	index := 0
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			pixel := color.NRGBAModel.Convert(source.At(x, y)).(color.NRGBA)
+			pixels[index] = pixel.B
+			pixels[index+1] = pixel.G
+			pixels[index+2] = pixel.R
+			index += 3
+		}
+	}
 }
 
 func imageIsNil(value image.Image) bool {

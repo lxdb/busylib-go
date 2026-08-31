@@ -118,7 +118,6 @@ func ConvertZIP(source io.Reader, filename string, options ...Option) (Result, e
 		}
 	}
 
-	imageFrames := make([]ImageFrame, 0, len(indexes))
 	var width, height int
 	for _, index := range indexes {
 		file := framesByIndex[index]
@@ -144,17 +143,26 @@ func ConvertZIP(source io.Reader, filename string, options ...Option) (Result, e
 				"%w: dimensions are %dx%d, want %dx%d", ErrInvalidFrame, imageConfig.Width, imageConfig.Height, width, height,
 			))
 		}
-		decoded, err := png.Decode(bytes.NewReader(frameData))
-		if err != nil {
-			return Result{}, conversionError("decode", index, file.Name, errors.Join(ErrInvalidFrame, err))
-		}
-		imageFrames = append(imageFrames, ImageFrame{Image: decoded})
 	}
 
-	return EncodeImages(
-		imageFrames,
-		fps,
-		WithMaxOutputBytes(conversionConfig.maxOutputBytes),
+	return encodeFrames(
+		len(indexes),
+		RGB888Config{Width: width, Height: height, FPS: fps},
+		conversionConfig,
+		func(position int, pixels []byte) (uint8, string, error) {
+			index := indexes[position]
+			file := framesByIndex[index]
+			frameData, err := readZIPEntry(file, conversionConfig.maxInputBytes)
+			if err != nil {
+				return 0, file.Name, conversionError("read", index, file.Name, err)
+			}
+			decoded, err := png.Decode(bytes.NewReader(frameData))
+			if err != nil {
+				return 0, file.Name, conversionError("decode", index, file.Name, errors.Join(ErrInvalidFrame, err))
+			}
+			fillImagePixels(pixels, decoded)
+			return 0, file.Name, nil
+		},
 	)
 }
 
