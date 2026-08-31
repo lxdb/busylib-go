@@ -1,27 +1,26 @@
 # Third-party notices
 
+This file records third-party material distributed with the root module. Dependency versions remain owned by `go.mod` and `go.sum`.
+
 ## BUSY Bar protobuf inputs
 
-This repository contains selected inputs from `busy-app/busybar-protobuf`.
-The copied inputs live under `internal/protosrc/bsb-protobuf`.
-Generated Go packages under `proto` derive from those inputs.
+This repository contains selected inputs copied from [`busy-app/busybar-protobuf`](https://github.com/busy-app/busybar-protobuf) under `internal/protosrc/bsb-protobuf`. The generated Go packages under `proto` derive from those inputs.
 
-The selected upstream snapshot did not include a license file.
-The repository must not become public until the copyright holder grants compatible permission.
+The recorded upstream commit is `dba670e2ddb5cda511af997ca5fcb1254e90917f`. The selected snapshot does not include a license file or other verified redistribution permission. The project license does not grant rights in third-party material that the project does not own.
 
-The recorded protobuf commit is `dba670e2ddb5cda511af997ca5fcb1254e90917f`.
-The project MIT License does not override upstream rights.
+**Distribution blocker:** Do not make this repository public, create a release tag containing the copied inputs or generated outputs, or publish the Go module until compatible permission is documented or the affected material is removed.
+
+The dated [protobuf license research](docs/research/protobuf-license.md) records the evidence and the conditions for clearing this blocker.
 
 ## Go dependencies
 
-Module dependency versions are recorded in `go.mod` and `go.sum`.
-They are fetched as modules and are not vendored in this repository.
+The root module fetches its dependencies as Go modules and does not vendor them.
 
-| Module | Version | License |
-| --- | --- | --- |
-| `github.com/coder/websocket` | v1.8.15 | ISC |
-| `google.golang.org/protobuf` | v1.36.12 | BSD-3-Clause |
-| `github.com/eclipse/paho.golang` | v0.23.0 | EPL-2.0 or EDL-1.0 |
+| Module | License |
+| --- | --- |
+| `github.com/coder/websocket` | ISC |
+| `google.golang.org/protobuf` | BSD-3-Clause |
 
-The Paho module is used only by the separate physical-device test module.
-Each module contains its complete license text in its upstream distribution.
+Consult each dependency’s upstream distribution for its complete license text and `go.mod` or `go.sum` for the selected version.
+
+The separate `github.com/lxdb/busylib-go/pahotransport` module has its own third-party notices.
