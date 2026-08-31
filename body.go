@@ -45,7 +45,8 @@ func BytesBody(data []byte, contentType string) Body {
 
 // ReaderBody sends reader as a single-use request body.
 // It is never replayed for retries; use RepeatableBody or BytesBody when an
-// upload must be retryable.
+// upload must be retryable. Client closes reader after the request attempt when
+// it also implements io.ReadCloser.
 func ReaderBody(reader io.Reader, contentType string) Body {
 	return &readerBody{
 		reader:      reader,
@@ -54,7 +55,8 @@ func ReaderBody(reader io.Reader, contentType string) Body {
 }
 
 // RepeatableBody sends a body that can be opened again for each attempt.
-// The opener must return a fresh reader every time it is called.
+// The opener must return a fresh reader every time it is called. Client closes
+// every reader returned by the opener after its request attempt.
 func RepeatableBody(contentType string, contentLength int64, open func() (io.ReadCloser, error)) Body {
 	return repeatableBody{
 		contentType:   contentType,

@@ -651,7 +651,7 @@ func TestProgressBodyReportsKnownAndUnknownTotals(t *testing.T) {
 		}
 	})
 
-	t.Run("retry resets current attempt", func(t *testing.T) {
+	t.Run("failed upload is not replayed", func(t *testing.T) {
 		var progress []int64
 		attempts := 0
 		client, err := NewClient(
@@ -671,10 +671,7 @@ func TestProgressBodyReportsKnownAndUnknownTotals(t *testing.T) {
 					}
 				}
 				_ = r.Body.Close()
-				if attempts == 1 {
-					return nil, io.ErrUnexpectedEOF
-				}
-				return jsonResponse(http.StatusOK, map[string]string{"result": "OK"}), nil
+				return nil, io.ErrUnexpectedEOF
 			})}),
 		)
 		if err != nil {
@@ -687,12 +684,16 @@ func TestProgressBodyReportsKnownAndUnknownTotals(t *testing.T) {
 				progress = append(progress, written)
 			}),
 		})
-		if err != nil {
-			t.Fatalf("Upload: %v", err)
+		var requestErr *RequestError
+		if !errors.As(err, &requestErr) {
+			t.Fatalf("Upload error = %T %v, want RequestError", err, err)
 		}
-		want := []int64{3, 6, 7, 3, 6, 7}
+		want := []int64{3, 6, 7}
 		if !reflect.DeepEqual(progress, want) {
 			t.Fatalf("progress = %#v, want %#v", progress, want)
+		}
+		if attempts != 1 {
+			t.Fatalf("attempts = %d, want 1", attempts)
 		}
 	})
 }
@@ -962,7 +963,7 @@ func TestAPIErrorPreservesRequestContextAndExcerpt(t *testing.T) {
 	}
 }
 
-func TestTransportRetryUsesRepeatableBodiesOnly(t *testing.T) {
+func TestTransportRetryUsesSafeMethodsAndRepeatableBodiesOnly(t *testing.T) {
 	attempts := 0
 	client, err := NewClient(
 		WithBaseURL("http://busybar.local"),
@@ -983,16 +984,18 @@ func TestTransportRetryUsesRepeatableBodiesOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	if _, err := client.Do(context.Background(), Request{
+	_, err = client.Do(context.Background(), Request{
 		Method:       "POST",
 		Path:         "/api/storage/write",
 		Body:         BytesBody([]byte("payload"), "application/octet-stream"),
 		ResponseMode: ResponseModeJSON,
-	}); err != nil {
-		t.Fatalf("Do repeatable: %v", err)
+	})
+	var requestErr *RequestError
+	if !errors.As(err, &requestErr) {
+		t.Fatalf("repeatable POST error = %T %v, want RequestError", err, err)
 	}
-	if attempts != 2 {
-		t.Fatalf("attempts = %d, want retry", attempts)
+	if attempts != 1 {
+		t.Fatalf("repeatable POST attempts = %d, want 1", attempts)
 	}
 
 	attempts = 0
@@ -1010,17 +1013,41 @@ func TestTransportRetryUsesRepeatableBodiesOnly(t *testing.T) {
 		t.Fatalf("NewClient non-repeatable: %v", err)
 	}
 	_, err = client.Do(context.Background(), Request{
-		Method:       "POST",
-		Path:         "/api/storage/write",
-		Body:         ReaderBody(strings.NewReader("payload"), "application/octet-stream"),
+		Method:       http.MethodGet,
+		Path:         "/api/status",
 		ResponseMode: ResponseModeJSON,
 	})
-	var requestErr *RequestError
 	if !errors.As(err, &requestErr) {
-		t.Fatalf("error = %T %v, want RequestError", err, err)
+		t.Fatalf("repeatable GET error = %T %v, want RequestError", err, err)
+	}
+	if attempts != 2 {
+		t.Fatalf("repeatable GET attempts = %d, want 2", attempts)
+	}
+}
+
+func TestTransportRetryStopsWhenContextIsCanceledDuringBackoff(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	attempts := 0
+	client, err := NewClient(
+		WithBaseURL("http://busybar.local"),
+		WithVersionNegotiation(VersionNegotiationDisabled),
+		WithRetryPolicy(RetryPolicy{MaxAttempts: 3, Backoff: time.Hour}),
+		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			attempts++
+			cancel()
+			return nil, io.ErrUnexpectedEOF
+		})}),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	_, err = client.Do(ctx, Request{Method: http.MethodGet, Path: "/api/status"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Do error = %v, want context.Canceled", err)
 	}
 	if attempts != 1 {
-		t.Fatalf("non-repeatable attempts = %d, want 1", attempts)
+		t.Fatalf("attempts = %d, want 1", attempts)
 	}
 }
 

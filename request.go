@@ -279,7 +279,7 @@ func (c *Client) executePreparedWith(ctx context.Context, execution *executionRe
 	if maxAttempts <= 0 {
 		maxAttempts = 1
 	}
-	if !execution.body.repeatable {
+	if !execution.body.repeatable || !isSafeRetryMethod(execution.method) {
 		maxAttempts = 1
 	}
 
@@ -289,8 +289,13 @@ func (c *Client) executePreparedWith(ctx context.Context, execution *executionRe
 		transportAttempts++
 		response, err := c.sendOnce(ctx, execution)
 		if err != nil {
+			if contextErr := ctx.Err(); contextErr != nil {
+				return nil, requestError(execution, execution.requestID, transportAttempts, contextErr)
+			}
 			if transportAttempts < maxAttempts {
-				sleep(ctx, c.retryPolicy.Backoff)
+				if err := sleep(ctx, c.retryPolicy.Backoff); err != nil {
+					return nil, requestError(execution, execution.requestID, transportAttempts, err)
+				}
 				continue
 			}
 			return nil, requestError(execution, execution.requestID, transportAttempts, err)
@@ -334,6 +339,15 @@ func (c *Client) executePreparedWith(ctx context.Context, execution *executionRe
 		}
 
 		return handleResponse(response, execution, transportAttempts)
+	}
+}
+
+func isSafeRetryMethod(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -512,14 +526,19 @@ func headerValue(header http.Header, name string) string {
 	return ""
 }
 
-func sleep(ctx context.Context, duration time.Duration) {
+func sleep(ctx context.Context, duration time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if duration <= 0 {
-		return
+		return nil
 	}
 	timer := time.NewTimer(duration)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
+		return ctx.Err()
 	case <-timer.C:
+		return nil
 	}
 }

@@ -43,8 +43,9 @@ const (
 	VersionNegotiationDisabled VersionNegotiation = "disabled"
 )
 
-// RetryPolicy controls retries for repeatable requests.
-// MaxAttempts includes the initial attempt. A value of one disables retries.
+// RetryPolicy controls transport retries for repeatable GET, HEAD, and OPTIONS
+// requests. MaxAttempts includes the initial attempt. A value of one disables
+// retries. Mutating requests are never retried automatically.
 type RetryPolicy struct {
 	MaxAttempts int
 	Backoff     time.Duration
@@ -172,7 +173,8 @@ func WithRequestIDGenerator(generator func() string) Option {
 	}
 }
 
-// WithRetryPolicy sets the retry count and backoff for repeatable requests.
+// WithRetryPolicy sets the retry count and backoff for safe, repeatable
+// requests.
 func WithRetryPolicy(policy RetryPolicy) Option {
 	return func(config *clientConfig) error {
 		if policy.MaxAttempts <= 0 {
