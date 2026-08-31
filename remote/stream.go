@@ -362,7 +362,11 @@ func (s *statusStream) connectWithRetry(ctx context.Context, lifecycle publicstr
 func (s *statusStream) subscribe(ctx context.Context) (Subscription, error) {
 	callCtx, cancel := s.withTimeout(ctx)
 	defer cancel()
-	subscription, err := s.transport.Subscribe(callCtx, SubscriptionRequest{Topic: s.responseTopic, QoS: QoSAtMostOnce})
+	subscription, err := s.transport.Subscribe(callCtx, SubscriptionRequest{
+		Topic:           s.responseTopic,
+		QoS:             QoSAtMostOnce,
+		MaxPayloadBytes: s.maxMessageBytes,
+	})
 	if err != nil {
 		return nil, err
 	}

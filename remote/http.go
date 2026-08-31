@@ -134,7 +134,11 @@ func (r *httpRoundTripper) ensureSubscription(ctx context.Context) (Subscription
 	if r.subscription != nil {
 		return r.subscription, nil
 	}
-	subscription, err := r.transport.Subscribe(ctx, SubscriptionRequest{Topic: r.responseTopic, QoS: QoSAtLeastOnce})
+	subscription, err := r.transport.Subscribe(ctx, SubscriptionRequest{
+		Topic:           r.responseTopic,
+		QoS:             QoSAtLeastOnce,
+		MaxPayloadBytes: r.maxMessageBytes,
+	})
 	if err != nil {
 		return nil, &Error{Operation: "subscribe HTTP", Route: r.responseTopic, Err: err}
 	}

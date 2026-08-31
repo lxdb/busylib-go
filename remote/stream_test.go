@@ -37,8 +37,9 @@ func TestRemoteStatusStreamUsesFirmwareLeaseAndSharedDecoder(t *testing.T) {
 
 	requests := transport.subscriptionRequests()
 	wantSubscription := SubscriptionRequest{
-		Topic: "sessions/firmware-session/up/v1/stream-response/stream-client",
-		QoS:   QoSAtMostOnce,
+		Topic:           "sessions/firmware-session/up/v1/stream-response/stream-client",
+		QoS:             QoSAtMostOnce,
+		MaxPayloadBytes: DefaultMaxMessageBytes,
 	}
 	if !reflect.DeepEqual(requests, []SubscriptionRequest{wantSubscription}) {
 		t.Fatalf("subscriptions = %#v", requests)

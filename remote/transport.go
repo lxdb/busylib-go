@@ -30,9 +30,12 @@ type Message struct {
 }
 
 // SubscriptionRequest describes one exact-topic MQTT subscription.
+// MaxPayloadBytes must be positive. A transport must reject a larger payload
+// before retaining or copying it for the subscriber.
 type SubscriptionRequest struct {
-	Topic string
-	QoS   QoS
+	Topic           string
+	QoS             QoS
+	MaxPayloadBytes int64
 }
 
 // Transport is the caller-owned MQTT 5 connection used by a remote Client.
@@ -44,8 +47,9 @@ type Transport interface {
 }
 
 // Subscription receives messages until Close is called or Receive fails.
-// Close must be safe to call concurrently with Receive and unblock an
-// outstanding Receive call.
+// A received Message and its slices remain valid and owned by the caller.
+// Close must be idempotent, safe to call concurrently with Receive, and
+// unblock an outstanding Receive call.
 type Subscription interface {
 	Receive(context.Context) (Message, error)
 	Close() error

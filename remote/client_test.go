@@ -157,7 +157,12 @@ func TestDeviceRoundTripUsesFirmwareHTTPTopicAndCorrelation(t *testing.T) {
 	if message.Properties.ResponseTopic != "sessions/firmware-session/up/v1/http-response/client-a" || len(message.Properties.CorrelationData) != 32 {
 		t.Fatalf("request properties = %#v", message.Properties)
 	}
-	if got := transport.subscriptionRequests(); !reflect.DeepEqual(got, []SubscriptionRequest{{Topic: "sessions/firmware-session/up/v1/http-response/client-a", QoS: QoSAtLeastOnce}}) {
+	wantSubscription := SubscriptionRequest{
+		Topic:           "sessions/firmware-session/up/v1/http-response/client-a",
+		QoS:             QoSAtLeastOnce,
+		MaxPayloadBytes: DefaultMaxMessageBytes,
+	}
+	if got := transport.subscriptionRequests(); !reflect.DeepEqual(got, []SubscriptionRequest{wantSubscription}) {
 		t.Fatalf("subscriptions = %#v", got)
 	}
 }
