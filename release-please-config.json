@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/refs/tags/v17.6.0/schemas/config.json",
+  "bootstrap-sha": "397b7fb11b79f9495a72a4f87af3411a417bffa8",
+  "release-type": "go",
+  "bump-minor-pre-major": true,
+  "initial-version": "0.1.0",
+  "include-v-in-tag": true,
+  "separate-pull-requests": true,
+  "packages": {
+    ".": {
+      "component": "busylib-go",
+      "include-component-in-tag": false,
+      "exclude-paths": [
+        "pahotransport"
+      ]
+    },
+    "pahotransport": {
+      "component": "pahotransport",
+      "include-component-in-tag": true,
+      "tag-separator": "/"
+    }
+  }
+}

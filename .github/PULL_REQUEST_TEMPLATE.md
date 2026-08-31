@@ -16,4 +16,4 @@ Describe API, protocol, memory, concurrency, and compatibility risks.
 - [ ] Public behavior has documentation.
 - [ ] Generated files match their inputs.
 - [ ] No credential or device token is present.
-- [ ] The changelog includes user-visible changes.
+- [ ] The pull request title is a valid Conventional Commit.

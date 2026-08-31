@@ -20,6 +20,19 @@ Confirm that your change is compatible with the pinned firmware contract.
 Keep commits small and reviewable.
 Do not include unrelated formatting or generated changes.
 
+## Commit messages
+
+Release Please derives module versions and changelogs from Conventional Commits on `main`.
+
+| Type | Use |
+| --- | --- |
+| `feat` | Backward-compatible feature |
+| `fix` | Bug fix |
+| `docs`, `test`, `refactor`, `perf`, `build`, `ci`, or `chore` | A change that is best described by that standard type |
+| A type followed by `!`, or a `BREAKING CHANGE:` trailer | Breaking change |
+
+GitHub Actions validates pull-request titles. The repository’s release flow expects the validated title to become the squash commit message on `main`.
+
 ## Certificates and licensing
 
 By submitting a contribution, you confirm that you can license it to this project.
