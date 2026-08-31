@@ -10,7 +10,7 @@ MANIFEST="${SCRIPT_DIR}/protobuf-packages.tsv"
 # shellcheck source=protobuf-tools.env
 source "${SCRIPT_DIR}/protobuf-tools.env"
 
-MODULE="$(cd "${ROOT}" && go list -m)"
+MODULE="$(cd "${ROOT}" && GOTOOLCHAIN="${PROTOC_GEN_GO_TOOLCHAIN}" go list -m)"
 TMP_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -28,17 +28,13 @@ mkdir -p "${OUT_DIR}"
 TOOL_DIR="${TMP_DIR}/bin"
 mkdir -p "${TOOL_DIR}"
 
-if command -v protoc-gen-go >/dev/null 2>&1 &&
-  [[ "$(protoc-gen-go --version)" == "protoc-gen-go ${PROTOC_GEN_GO_VERSION}" ]]; then
-  cp "$(command -v protoc-gen-go)" "${TOOL_DIR}/protoc-gen-go"
-else
-  GOBIN="${TOOL_DIR}" GOCACHE="${BUSYLIB_GO_GOCACHE:-${TMP_DIR}/gocache}" \
-    go install "google.golang.org/protobuf/cmd/protoc-gen-go@${PROTOC_GEN_GO_VERSION}"
+GOTOOLCHAIN="${PROTOC_GEN_GO_TOOLCHAIN}" GOBIN="${TOOL_DIR}" \
+  GOCACHE="${BUSYLIB_GO_GOCACHE:-${TMP_DIR}/gocache}" \
+  go install "google.golang.org/protobuf/cmd/protoc-gen-go@${PROTOC_GEN_GO_VERSION}"
 
-  if [[ "$("${TOOL_DIR}/protoc-gen-go" --version)" != "protoc-gen-go ${PROTOC_GEN_GO_VERSION}" ]]; then
-    echo "failed to install protoc-gen-go ${PROTOC_GEN_GO_VERSION}" >&2
-    exit 1
-  fi
+if [[ "$("${TOOL_DIR}/protoc-gen-go" --version)" != "protoc-gen-go ${PROTOC_GEN_GO_VERSION}" ]]; then
+  echo "failed to install protoc-gen-go ${PROTOC_GEN_GO_VERSION}" >&2
+  exit 1
 fi
 
 manifest_paths="${TMP_DIR}/manifest-protos.txt"
