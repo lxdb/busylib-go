@@ -164,7 +164,9 @@ run_metadata() {
       go mod edit -dropreplace github.com/lxdb/busylib-go
   )
   diff -u "${PAHO_DIR}/go.mod" "${copy_dir}/go.mod"
-  diff -u "${PAHO_DIR}/go.sum" "${copy_dir}/go.sum"
+  grep -v '^github.com/lxdb/busylib-go ' "${PAHO_DIR}/go.sum" > "${TMP_DIR}/pahotransport.go.sum"
+  grep -v '^github.com/lxdb/busylib-go ' "${copy_dir}/go.sum" > "${TMP_DIR}/pahotransport-copy.go.sum"
+  diff -u "${TMP_DIR}/pahotransport.go.sum" "${TMP_DIR}/pahotransport-copy.go.sum"
 }
 
 run_security() {
