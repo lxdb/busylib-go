@@ -89,7 +89,7 @@ func (s *Session) streamLine(ctx context.Context, dst io.Writer, line string) er
 		return wrapError("stream", s.config.address, line, contextOr(ctx, err))
 	}
 
-	promptTail := make([]byte, 0, len(Prompt)-1)
+	promptTail := make([]byte, 0, len(prompt)-1)
 	buffer := make([]byte, 4096)
 	for {
 		if err := ctx.Err(); err != nil {
@@ -112,7 +112,7 @@ func (s *Session) streamLine(ctx context.Context, dst io.Writer, line string) er
 				stop()
 				return nil
 			}
-			promptTail = trailingBytes(combined, len(Prompt)-1)
+			promptTail = trailingBytes(combined, len(prompt)-1)
 		}
 		if err != nil {
 			stop()
@@ -127,7 +127,7 @@ func (s *Session) streamLine(ctx context.Context, dst io.Writer, line string) er
 
 func (s *Session) interruptAndRecover(line string, cause error) error {
 	_ = s.conn.SetDeadline(time.Now().Add(s.config.commandTimeout))
-	if _, err := s.conn.Write([]byte{InterruptByte}); err != nil {
+	if _, err := s.conn.Write([]byte{interruptByte}); err != nil {
 		s.fail()
 		return wrapError("interrupt", s.config.address, line, errors.Join(cause, fmt.Errorf("send ETX: %w", err)))
 	}

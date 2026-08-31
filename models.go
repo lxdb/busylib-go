@@ -6,8 +6,7 @@ import (
 	"github.com/lxdb/busylib-go/display"
 )
 
-// SuccessResponse contains the result text from a successful device operation.
-type SuccessResponse struct {
+type successResponse struct {
 	Result string `json:"result"`
 }
 
@@ -184,20 +183,14 @@ const (
 	DisplayAlignBottomRight DisplayAlign = "bottom_right"
 )
 
-// DisplayElementType is the wire discriminator for a display element.
-type DisplayElementType string
+type displayElementType string
 
 const (
-	// DisplayElementText identifies a text element.
-	DisplayElementText DisplayElementType = "text"
-	// DisplayElementImage identifies a static image element.
-	DisplayElementImage DisplayElementType = "image"
-	// DisplayElementAnimation identifies an animated image element.
-	DisplayElementAnimation DisplayElementType = "animation"
-	// DisplayElementCountdown identifies a countdown element.
-	DisplayElementCountdown DisplayElementType = "countdown"
-	// DisplayElementRectangle identifies a rectangle element.
-	DisplayElementRectangle DisplayElementType = "rectangle"
+	displayElementText      displayElementType = "text"
+	displayElementImage     displayElementType = "image"
+	displayElementAnimation displayElementType = "animation"
+	displayElementCountdown displayElementType = "countdown"
+	displayElementRectangle displayElementType = "rectangle"
 )
 
 // TextElement displays text with the selected font and scrolling behavior.
@@ -318,45 +311,45 @@ func (RectangleElement) displayElement() {}
 func (e TextElement) MarshalJSON() ([]byte, error) {
 	type alias TextElement
 	return json.Marshal(struct {
-		Type DisplayElementType `json:"type"`
+		Type displayElementType `json:"type"`
 		alias
-	}{Type: DisplayElementText, alias: alias(e)})
+	}{Type: displayElementText, alias: alias(e)})
 }
 
 // MarshalJSON adds the image element wire discriminator.
 func (e ImageElement) MarshalJSON() ([]byte, error) {
 	type alias ImageElement
 	return json.Marshal(struct {
-		Type DisplayElementType `json:"type"`
+		Type displayElementType `json:"type"`
 		alias
-	}{Type: DisplayElementImage, alias: alias(e)})
+	}{Type: displayElementImage, alias: alias(e)})
 }
 
 // MarshalJSON adds the animation element wire discriminator.
 func (e AnimationElement) MarshalJSON() ([]byte, error) {
 	type alias AnimationElement
 	return json.Marshal(struct {
-		Type DisplayElementType `json:"type"`
+		Type displayElementType `json:"type"`
 		alias
-	}{Type: DisplayElementAnimation, alias: alias(e)})
+	}{Type: displayElementAnimation, alias: alias(e)})
 }
 
 // MarshalJSON adds the countdown element wire discriminator.
 func (e CountdownElement) MarshalJSON() ([]byte, error) {
 	type alias CountdownElement
 	return json.Marshal(struct {
-		Type DisplayElementType `json:"type"`
+		Type displayElementType `json:"type"`
 		alias
-	}{Type: DisplayElementCountdown, alias: alias(e)})
+	}{Type: displayElementCountdown, alias: alias(e)})
 }
 
 // MarshalJSON adds the rectangle element wire discriminator.
 func (e RectangleElement) MarshalJSON() ([]byte, error) {
 	type alias RectangleElement
 	return json.Marshal(struct {
-		Type DisplayElementType `json:"type"`
+		Type displayElementType `json:"type"`
 		alias
-	}{Type: DisplayElementRectangle, alias: alias(e)})
+	}{Type: displayElementRectangle, alias: alias(e)})
 }
 
 // PlayAudio selects a stored or stock audio asset for playback.
@@ -615,21 +608,21 @@ const (
 	WiFiStateReconnecting WiFiConnectionState = "reconnecting"
 )
 
-// NetworkResponse contains the Wi-Fi networks found by a scan.
-type NetworkResponse struct {
-	Count    int       `json:"count"`
-	Networks []Network `json:"networks"`
+// WiFiNetworkList contains the Wi-Fi networks found by a scan.
+type WiFiNetworkList struct {
+	Count    int           `json:"count"`
+	Networks []WiFiNetwork `json:"networks"`
 }
 
-// Network describes one Wi-Fi network found by a scan.
-type Network struct {
+// WiFiNetwork describes one Wi-Fi network found by a scan.
+type WiFiNetwork struct {
 	SSID     string             `json:"ssid"`
 	Security WiFiSecurityMethod `json:"security"`
 	RSSI     int                `json:"rssi"`
 }
 
-// ConnectRequestConfig configures a Wi-Fi connection request.
-type ConnectRequestConfig struct {
+// WiFiConnectRequest configures a Wi-Fi connection request.
+type WiFiConnectRequest struct {
 	SSID     string              `json:"ssid"`
 	Password string              `json:"password"`
 	Security WiFiSecurityMethod  `json:"security"`

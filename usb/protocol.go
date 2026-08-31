@@ -47,13 +47,13 @@ func readUntilPrompt(reader io.Reader, maximum int) ([]byte, error) {
 }
 
 func containsPrompt(data []byte) bool {
-	return bytes.HasSuffix(stripIAC(data), []byte(Prompt))
+	return bytes.HasSuffix(stripIAC(data), []byte(prompt))
 }
 
 func cleanOutput(raw []byte, command string) string {
 	clean := stripIAC(raw)
 	clean = ansiSequence.ReplaceAll(clean, nil)
-	if index := bytes.LastIndex(clean, []byte(Prompt)); index >= 0 {
+	if index := bytes.LastIndex(clean, []byte(prompt)); index >= 0 {
 		clean = clean[:index]
 	}
 	text := strings.ReplaceAll(string(clean), "\r\n", "\n")

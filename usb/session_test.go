@@ -81,8 +81,8 @@ func TestStreamCommandSendsETXAndRecoversPromptOnCancellation(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("StreamCommand error = %v", err)
 	}
-	if got := <-etx; got != InterruptByte {
-		t.Fatalf("interrupt byte = %d, want %d", got, InterruptByte)
+	if got := <-etx; got != interruptByte {
+		t.Fatalf("interrupt byte = %d, want %d", got, interruptByte)
 	}
 	if !bytes.Contains(writer.Bytes(), []byte("first line")) {
 		t.Fatalf("stream output = %q", writer.Bytes())

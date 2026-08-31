@@ -143,7 +143,7 @@ func (request WriteStorageFileRequest) Validate() error {
 }
 
 // Validate reports whether Wi-Fi connection settings meet the device contract.
-func (request ConnectRequestConfig) Validate() error {
+func (request WiFiConnectRequest) Validate() error {
 	if request.SSID == "" {
 		return errors.New("ssid must not be empty")
 	}

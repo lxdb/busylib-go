@@ -30,7 +30,7 @@ func TestClientSendCommandUsesFreshPromptFramedConnection(t *testing.T) {
 	if response.Command != "uptime" || response.Output != "123 seconds" {
 		t.Fatalf("response = %#v", response)
 	}
-	if !bytes.Contains(response.Raw, []byte("uptime\r\n")) || !bytes.HasSuffix(response.Raw, []byte(Prompt)) {
+	if !bytes.Contains(response.Raw, []byte("uptime\r\n")) || !bytes.HasSuffix(response.Raw, []byte(prompt)) {
 		t.Fatalf("raw response = %q", response.Raw)
 	}
 	<-done

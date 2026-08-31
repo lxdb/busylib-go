@@ -264,7 +264,7 @@ func serviceRequestCases(t *testing.T) []serviceRequestCase {
 		jsonGetCase("wifi status", "/api/wifi/status", func(ctx context.Context, client *Client) error { _, err := client.WiFi().Status(ctx); return err }, `{"state":"connected","ssid":"ssid","security":"WPA3"}`),
 		jsonGetCase("wifi networks", "/api/wifi/networks", func(ctx context.Context, client *Client) error { _, err := client.WiFi().Networks(ctx); return err }, `{"count":1,"networks":[{"ssid":"ssid","security":"WPA3","rssi":-58}]}`),
 		successJSONCase("wifi connect", http.MethodPost, "/api/wifi/connect", "", `{"ssid":"ssid","password":"pass","security":"WPA3","ip_config":{"ip_method":"dhcp"}}`, func(ctx context.Context, client *Client) error {
-			return client.WiFi().Connect(ctx, ConnectRequestConfig{SSID: "ssid", Password: "pass", Security: WiFiSecurityWPA3, IPConfig: WiFiConnectIPConfig{IPMethod: WiFiIPMethodDHCP}})
+			return client.WiFi().Connect(ctx, WiFiConnectRequest{SSID: "ssid", Password: "pass", Security: WiFiSecurityWPA3, IPConfig: WiFiConnectIPConfig{IPMethod: WiFiIPMethodDHCP}})
 		}, okJSON),
 		successCase("wifi disconnect", http.MethodPost, "/api/wifi/disconnect", "", func(ctx context.Context, client *Client) error { return client.WiFi().Disconnect(ctx) }, okJSON),
 		successCase("input key", http.MethodPost, "/api/input", "key=ok", func(ctx context.Context, client *Client) error { return client.Input().SendKey(ctx, InputKeyOK) }, okJSON),
@@ -364,7 +364,7 @@ func TestDisplayElementsMarshalPreservesExplicitZeroValues(t *testing.T) {
 }
 
 func TestWiFiConnectConfigDoesNotMarshalStatusOnlyIPType(t *testing.T) {
-	payload := ConnectRequestConfig{
+	payload := WiFiConnectRequest{
 		SSID:     "ssid",
 		Security: WiFiSecurityWPA3,
 		IPConfig: WiFiConnectIPConfig{
@@ -384,6 +384,30 @@ func TestWiFiConnectConfigDoesNotMarshalStatusOnlyIPType(t *testing.T) {
 	}
 
 	assertJSONEqual(t, string(data), `{"ssid":"ssid","password":"","security":"WPA3","ip_config":{"ip_method":"static","address":"192.0.2.10","mask":"255.255.255.0","gateway":"192.0.2.1"}}`)
+}
+
+func TestWiFiNetworkListPreservesFirmwareJSONShape(t *testing.T) {
+	want := WiFiNetworkList{
+		Count: 1,
+		Networks: []WiFiNetwork{{
+			SSID:     "ssid",
+			Security: WiFiSecurityWPA3,
+			RSSI:     -58,
+		}},
+	}
+	data, err := json.Marshal(want)
+	if err != nil {
+		t.Fatalf("marshal Wi-Fi network list: %v", err)
+	}
+	assertJSONEqual(t, string(data), `{"count":1,"networks":[{"ssid":"ssid","security":"WPA3","rssi":-58}]}`)
+
+	var got WiFiNetworkList
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal Wi-Fi network list: %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Wi-Fi network list = %#v, want %#v", got, want)
+	}
 }
 
 func TestDisplayHelperConstructorsMarshalAndValidate(t *testing.T) {
@@ -511,7 +535,7 @@ func TestProductValidatorsAcceptDocumentedBoundaries(t *testing.T) {
 	if err := (AutoUpdateSettings{IntervalStart: "8:00", IntervalEnd: "9:30"}).Validate(); err != nil {
 		t.Fatalf("AutoUpdateSettings non-padded firmware clock Validate: %v", err)
 	}
-	if err := (ConnectRequestConfig{
+	if err := (WiFiConnectRequest{
 		SSID:     "ssid",
 		Security: WiFiSecurityWPA3,
 		IPConfig: WiFiConnectIPConfig{
@@ -521,7 +545,7 @@ func TestProductValidatorsAcceptDocumentedBoundaries(t *testing.T) {
 			Gateway:  "192.0.2.1",
 		},
 	}).Validate(); err != nil {
-		t.Fatalf("ConnectRequestConfig.Validate: %v", err)
+		t.Fatalf("WiFiConnectRequest.Validate: %v", err)
 	}
 }
 
@@ -533,14 +557,14 @@ func TestFirmware24_4ValidationShapes(t *testing.T) {
 		t.Fatalf("timezone should be left to firmware membership validation: %v", err)
 	}
 
-	if err := (ConnectRequestConfig{
+	if err := (WiFiConnectRequest{
 		SSID:     " ",
 		Security: WiFiSecurityOpen,
 		IPConfig: WiFiConnectIPConfig{IPMethod: WiFiIPMethodDHCP},
 	}).Validate(); err != nil {
 		t.Fatalf("firmware-valid open Wi-Fi request: %v", err)
 	}
-	if err := (ConnectRequestConfig{
+	if err := (WiFiConnectRequest{
 		SSID:     "ssid",
 		Security: WiFiSecurityUnsupported,
 		IPConfig: WiFiConnectIPConfig{IPMethod: WiFiIPMethodDHCP},
@@ -700,8 +724,8 @@ func TestProductValidatorsRejectInvalidInputs(t *testing.T) {
 		{"image duplicate source", (DisplayElements{ApplicationName: "app", Priority: DefaultDisplayPriority, Elements: []DisplayElement{ImageElement{BaseDisplayElement: BaseDisplayElement{ID: "image"}, Path: "a.png", StockPath: "shared/a.png"}}}).Validate()},
 		{"audio missing source", (PlayAudio{ApplicationName: "app"}).Validate()},
 		{"autoupdate time", (AutoUpdateSettings{IntervalStart: "24:00"}).Validate()},
-		{"wifi ssid", (ConnectRequestConfig{}).Validate()},
-		{"wifi static ip", (ConnectRequestConfig{SSID: "ssid", Security: WiFiSecurityWPA3, IPConfig: WiFiConnectIPConfig{IPMethod: WiFiIPMethodStatic, Address: "192.0.2.10"}}).Validate()},
+		{"wifi ssid", (WiFiConnectRequest{}).Validate()},
+		{"wifi static ip", (WiFiConnectRequest{SSID: "ssid", Security: WiFiSecurityWPA3, IPConfig: WiFiConnectIPConfig{IPMethod: WiFiIPMethodStatic, Address: "192.0.2.10"}}).Validate()},
 	}
 	for _, tc := range invalid {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1146,7 +1170,7 @@ func TestServiceValidationRejectsInvalidInputsBeforeNetwork(t *testing.T) {
 		{"storage read to path", func() error { _, err := client.Storage().ReadTo(ctx, "/tmp/file", io.Discard); return err }},
 		{"storage read to writer", func() error { _, err := client.Storage().ReadTo(ctx, "/ext/file", nil); return err }},
 		{"storage rename", func() error { return client.Storage().Rename(ctx, "/ext/old", "/tmp/new") }},
-		{"wifi connect", func() error { return client.WiFi().Connect(ctx, ConnectRequestConfig{}) }},
+		{"wifi connect", func() error { return client.WiFi().Connect(ctx, WiFiConnectRequest{}) }},
 		{"input key", func() error { return client.Input().SendKey(ctx, InputKey("power")) }},
 		{"smart home switch", func() error {
 			return client.SmartHome().SetSwitchState(ctx, SmartHomeSwitchUpdate{Startup: SmartHomeSwitchStartup("boot")})
@@ -1207,7 +1231,7 @@ func TestFirmwareBlockedServiceMethodsAreRejectedInRemoteMode(t *testing.T) {
 			return client.Account().SetBackend(ctx, AccountBackend{ServerURL: "default", ClientCertType: AccountClientCertDefault})
 		}},
 		{"account link", func() error { _, err := client.Account().Link(ctx); return err }},
-		{"wifi connect", func() error { return client.WiFi().Connect(ctx, ConnectRequestConfig{SSID: "ssid"}) }},
+		{"wifi connect", func() error { return client.WiFi().Connect(ctx, WiFiConnectRequest{SSID: "ssid"}) }},
 		{"wifi disconnect", func() error { return client.WiFi().Disconnect(ctx) }},
 		{"wifi networks", func() error { _, err := client.WiFi().Networks(ctx); return err }},
 	}

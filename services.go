@@ -562,14 +562,14 @@ func (s WiFiService) Status(ctx context.Context) (WiFiStatus, error) {
 }
 
 // Networks scans for available Wi-Fi networks.
-func (s WiFiService) Networks(ctx context.Context) (NetworkResponse, error) {
-	var out NetworkResponse
+func (s WiFiService) Networks(ctx context.Context) (WiFiNetworkList, error) {
+	var out WiFiNetworkList
 	err := s.client.doJSON(ctx, http.MethodGet, "/api/wifi/networks", nil, nil, &out)
 	return out, err
 }
 
 // Connect validates the network settings and starts a Wi-Fi connection.
-func (s WiFiService) Connect(ctx context.Context, request ConnectRequestConfig) error {
+func (s WiFiService) Connect(ctx context.Context, request WiFiConnectRequest) error {
 	if err := request.Validate(); err != nil {
 		return validationError(http.MethodPost, "/api/wifi/connect", err.Error(), err)
 	}
@@ -736,7 +736,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, query url.Valu
 }
 
 func (c *Client) doSuccess(ctx context.Context, method, path string, query url.Values, body Body) error {
-	var out SuccessResponse
+	var out successResponse
 	return c.doJSON(ctx, method, path, query, body, &out)
 }
 
