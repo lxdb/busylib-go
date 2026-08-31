@@ -10,7 +10,7 @@ Open an issue before a large API or protocol change. Do not include secrets, dev
 
 1. Create a focused branch.
 2. Add tests for observable behavior when the risk justifies them.
-3. Run the relevant targeted checks, then `go test ./...` and `go vet ./...`.
+3. Run the relevant targeted checks, then `scripts/verify.sh quick`.
 4. Update public documentation when the user-visible contract changes.
 5. Use a Conventional Commit pull-request title.
 6. Describe risks, verification evidence, and any check that was not run.

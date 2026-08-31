@@ -23,30 +23,26 @@ Do not enable release publication until all applicable gates have evidence:
 - Examples compile against the release candidate.
 - Required repository security controls are active, or an unavailable control is recorded as a manual blocker.
 
-Hosted CI compiles physical-device tests. It does not satisfy the hardware gate.
+GitHub workflows invoke the same repository harness on hosted machines. Hosted execution compiles physical-device tests but does not satisfy the local hardware gate.
 
 ## Verify a release candidate
 
-Run the root checks on the candidate commit:
+Run every device-free release check on the candidate commit. The command requires Docker, the pinned `protoc`, vulnerability-database access, and the protobuf and firmware checkouts:
 
 ```sh
-CGO_ENABLED=0 go test ./...
-scripts/test-coverage.sh
-go test -race ./...
-go vet ./...
+BUSYBAR_FIRMWARE_DIR=/path/to/busybar-firmware scripts/verify.sh all
 ```
 
-Run the adapter and device-tag compilation checks from the repository root:
+Then run the physical local HTTP, WebSocket, and USB checks. Both addresses are required so no device test can pass by skipping:
 
 ```sh
-workspace="$(mktemp -d)/go.work"
-repository="$(pwd)"
-GOWORK="$workspace" go work init "$repository/pahotransport"
-GOWORK="$workspace" go work edit -replace github.com/lxdb/busylib-go="$repository"
-(cd pahotransport && GOWORK="$workspace" go test -race -count=1 ./... && GOWORK="$workspace" go vet ./...)
-GOWORK=off go test -run '^$' -tags=device ./integration/device
-GOWORK=off go vet -tags=device ./integration/device
+BUSYBAR_BASE_URL=http://device-address \
+BUSYBAR_USB_ADDRESS=device-usb-address \
+BUSYBAR_FIRMWARE_DIR=/path/to/busybar-firmware \
+scripts/verify.sh release
 ```
+
+`release` reruns the device-free gates before touching the physical device. Record the harness command, device model, firmware version, and result without recording credentials or device tokens.
 
 When `pahotransport/go.mod` changes its root requirement, test the declared public dependency after that root version is available:
 
@@ -54,14 +50,7 @@ When `pahotransport/go.mod` changes its root requirement, test the declared publ
 (cd pahotransport && GOWORK=off go test -mod=readonly ./...)
 ```
 
-Run the physical checks with the environment described in [Device integration tests](../integration/device/README.md):
-
-```sh
-go test -tags=device -run TestLocalDevice -v ./integration/device
-go test -tags=device -run TestUSBDevice -v ./integration/device
-```
-
-Record the device model, firmware version, commands, and results without recording credentials or device tokens. Use the release pull request’s CI run as the hosted verification record.
+Use the release pull request’s workflow run as supplemental hosted evidence that the same device-free harness phases passed on Linux and macOS.
 
 ## Release automation
 

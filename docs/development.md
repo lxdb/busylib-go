@@ -1,54 +1,56 @@
 # Development
 
-Run repository checks from the root of an authorized checkout. The root library and the Paho adapter are separate Go modules and must be verified separately.
+Run repository checks from the root of an authorized checkout. `scripts/verify.sh` is the executable verification contract for local development and CI; the workflow files select machines and invoke its named phases.
 
-## Root module
+## Fast feedback
 
-Install the Go version declared in `go.mod`, using the latest available security patch for that release. Then run:
+Install a Go toolchain with automatic toolchain downloads enabled, then run:
 
 ```sh
-go mod download
-go test ./...
-go vet ./...
-go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+scripts/verify.sh quick
 ```
 
-Run targeted tests while developing. Run the full suite and race detector before requesting review for a shared or concurrent behavior change.
+The harness reads exact Go, linter, vulnerability-scanner, broker-image, and fuzz versions from `scripts/verify-tools.env`. It creates the temporary Paho workspace outside the repository and never adds a local replacement to a committed module file.
+
+Run a focused phase while developing:
 
 ```sh
-go test -race ./...
+scripts/verify.sh lint
+scripts/verify.sh repository
+scripts/verify.sh metadata
+scripts/verify.sh security
+scripts/verify.sh integration
 ```
 
 Tests should assert observable behavior. Use exact counts when the contract defines an exact set, synchronization barriers for concurrent behavior, and deadlines only as failure bounds. A sleep is not evidence that concurrent work completed correctly.
 
-## Paho adapter module
+## Complete device-free verification
 
-The adapter depends on an unreleased root module version. Use a temporary workspace to test the two checkouts together without changing either `go.mod` file.
-
-```sh
-workspace="$(mktemp -d)/go.work"
-repository="$(pwd)"
-GOWORK="$workspace" go work init "$repository/pahotransport"
-GOWORK="$workspace" go work edit -replace github.com/lxdb/busylib-go="$repository"
-(cd pahotransport && GOWORK="$workspace" go test ./... && GOWORK="$workspace" go vet ./...)
-```
-
-Do not commit `go.work` or a local `replace` directive. The temporary replacement tests the adapter against the current checkout; it does not verify that the declared public dependency can be downloaded.
-
-## Generated contracts
-
-Use the repository scripts to check generated protobuf code and the pinned firmware API contract.
+The complete device-free harness requires Go, Docker, `protoc` at the version declared in `scripts/protobuf-tools.env`, network access for pinned tools and vulnerability data, and sibling `../busybar-protobuf` and `../busybar-firmware` checkouts. Set `BUSYLIB_GO_PROTO_SRC` or `BUSYBAR_FIRMWARE_DIR` to use another path.
 
 ```sh
-scripts/check-protobuf.sh
-BUSYBAR_FIRMWARE_DIR=/path/to/busybar-firmware scripts/check-firmware-contract.sh
+BUSYBAR_FIRMWARE_DIR=/path/to/busybar-firmware scripts/verify.sh all
 ```
 
-The firmware checkout must match `internal/api/testdata/firmware-contract.json`. The protobuf check must leave no diff. Do not edit generated `.pb.go` files directly.
+`all` validates repository and workflow syntax, Conventional Commit history, minimum and current Go versions, tests, race behavior, vet, coverage, lint, module metadata, known vulnerabilities, generated protobufs, the firmware contract, broker-backed integration, device-tag compilation, and the scheduled fuzz target. Set `BUSYLIB_FUZZ_TIME` only for a focused diagnostic run; release evidence uses the declared default.
 
-## Physical-device tests
+The adapter depends on an unreleased root module version. The harness verifies its metadata in a disposable copy with a temporary local replacement. After the root version is public, separately run the workspace-disabled consumer check documented in [Releasing](releasing.md).
 
-Device tests use the `device` build tag, so ordinary unit tests do not run them. Hosted CI compiles and vets them but cannot supply physical-device evidence. Follow [Device integration tests](../integration/device/README.md) for local HTTP, WebSocket, USB, and broker-backed checks.
+## Physical-device verification
+
+Set both physical-device addresses so the tests cannot silently skip, then run:
+
+```sh
+BUSYBAR_BASE_URL=http://device-address \
+BUSYBAR_USB_ADDRESS=device-usb-address \
+scripts/verify.sh device
+```
+
+`BUSYBAR_ACCESS_KEY` is optional when the local HTTP API requires it. The harness fails before testing if either required address is absent.
+
+## GitHub-only services
+
+CodeQL, pull-request dependency review, pull-request title validation, and release publication depend on GitHub event or service state. They remain supplemental workflow checks; they do not replace `scripts/verify.sh`. A release candidate requires both a passing local release harness and the applicable GitHub service checks.
 
 ## Documentation changes
 

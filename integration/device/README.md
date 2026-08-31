@@ -7,36 +7,28 @@ This directory contains opt-in tests that require a physical BUSY Bar or an exte
 Hosted CI can compile and vet the device-tagged files and run broker-backed adapter tests. It cannot establish that a physical device is reachable or compatible.
 
 ```sh
-workspace="$(mktemp -d)/go.work"
-repository="$(pwd)"
-GOWORK="$workspace" go work init "$repository/pahotransport"
-GOWORK="$workspace" go work edit -replace github.com/lxdb/busylib-go="$repository"
-(cd pahotransport && GOWORK="$workspace" go test -race -count=1 ./... && GOWORK="$workspace" go vet ./...)
-GOWORK=off go test -run '^$' -tags=device ./integration/device
-GOWORK=off go vet -tags=device ./integration/device
+scripts/verify.sh integration
 ```
 
-The root `go test` command uses `-run '^$'` so it compiles selected tests without running them. A passing result is compile evidence, not device evidence.
+The `integration` phase compiles selected device tests without running them. A passing result is compile evidence, not device evidence.
 
 ## Test local HTTP and WebSocket behavior
 
 Set `BUSYBAR_BASE_URL` to the local device URL. Set `BUSYBAR_ACCESS_KEY` only when the device requires it.
 
 ```sh
-go test -tags=device -run TestLocalDevice -v ./integration/device
+BUSYBAR_BASE_URL=http://device-address \
+BUSYBAR_USB_ADDRESS=device-usb-address \
+scripts/verify.sh device
 ```
 
-This command runs the local HTTP snapshot and WebSocket lifecycle checks. The tests skip when `BUSYBAR_BASE_URL` is not set.
+The harness runs the local HTTP snapshot and WebSocket lifecycle checks. It requires both addresses so a release verification cannot pass through skipped tests. Set `BUSYBAR_ACCESS_KEY` only when the device requires it.
 
 ## Test USB CLI access
 
-Set `BUSYBAR_USB_ADDRESS` to the CLI address reported for the target device.
+Set `BUSYBAR_USB_ADDRESS` to the CLI address reported for the target device. Use the same `scripts/verify.sh device` command shown above so both physical paths are verified together.
 
-```sh
-go test -tags=device -run TestUSBDevice -v ./integration/device
-```
-
-The test skips when `BUSYBAR_USB_ADDRESS` is not set. A failure can indicate permissions or descriptor access as well as a library defect.
+A failure can indicate permissions or descriptor access as well as a library defect.
 
 ## Broker-backed remote checks
 

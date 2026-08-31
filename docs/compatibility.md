@@ -8,10 +8,11 @@ This page records the compatibility contract that maintainers must check when a 
 | --- | --- |
 | Root Go toolchain | `go.mod` |
 | Paho adapter Go toolchain | `pahotransport/go.mod` |
+| Local verification toolchains and tools | `scripts/verify-tools.env` |
 | Firmware API contract and audited revisions | `internal/api/testdata/firmware-contract.json` |
 | Protobuf repository, CI revision, and frame-options digest | `scripts/protobuf-source.env` |
 | Generated protobuf mapping and source digests | `scripts/protobuf-packages.tsv` |
-| CI operating systems and commands | `.github/workflows/ci.yml` |
+| CI operating systems | `.github/workflows/ci.yml` |
 | Release module order and tag format | `release-please-config.json` |
 
 Documentation must point to these files instead of copying values that can drift without a reader noticing.
