@@ -63,23 +63,75 @@ func TestPrepareAppliesLocalAuthRequestIDAndSession(t *testing.T) {
 		t.Fatalf("Prepare: %v", err)
 	}
 
-	if prepared.Method != http.MethodGet {
-		t.Fatalf("Method = %q", prepared.Method)
+	if prepared.Method() != http.MethodGet {
+		t.Fatalf("Method = %q", prepared.Method())
 	}
-	if got := prepared.URL.String(); got != "http://busybar.local/api/status?display=front" {
+	preparedURL := prepared.URL()
+	if got := preparedURL.String(); got != "http://busybar.local/api/status?display=front" {
 		t.Fatalf("URL = %q", got)
 	}
-	if got := prepared.Header.Get("X-API-Token"); got != "1234" {
+	if got := prepared.Header().Get("X-API-Token"); got != "1234" {
 		t.Fatalf("X-API-Token = %q", got)
 	}
-	if got := prepared.Header.Get("X-Request-ID"); got != "rid-1" {
+	if got := prepared.Header().Get("X-Request-ID"); got != "rid-1" {
 		t.Fatalf("X-Request-ID = %q", got)
 	}
-	if got := prepared.Header.Get("x-session-id"); got != "request-session" {
+	if got := prepared.Header().Get("x-session-id"); got != "request-session" {
 		t.Fatalf("x-session-id = %q", got)
 	}
-	if got := prepared.RequestID; got != "rid-1" {
+	if got := prepared.RequestID(); got != "rid-1" {
 		t.Fatalf("RequestID = %q", got)
+	}
+}
+
+func TestPreparedRequestAccessorsCannotChangeExecution(t *testing.T) {
+	var receivedPath string
+	var receivedToken string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPath = r.URL.Path
+		receivedToken = r.Header.Get("X-API-Token")
+		writeJSON(t, w, map[string]string{"status": "ok"})
+	}))
+	defer server.Close()
+
+	client, err := NewClient(
+		WithBaseURL(server.URL),
+		WithLocalAccessKey("secret"),
+		WithVersionNegotiation(VersionNegotiationDisabled),
+		WithRequestIDGenerator(fixedRequestID("rid-1")),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	prepared, err := client.Prepare(Request{
+		Method:       http.MethodGet,
+		Path:         "/api/status",
+		ResponseMode: ResponseModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+
+	viewURL := prepared.URL()
+	viewURL.Host = "attacker.invalid"
+	viewURL.Path = "/stolen"
+	viewHeader := prepared.Header()
+	viewHeader.Set("X-API-Token", "changed")
+
+	if _, err := client.DoPrepared(context.Background(), prepared); err != nil {
+		t.Fatalf("DoPrepared: %v", err)
+	}
+	if receivedPath != "/api/status" {
+		t.Fatalf("request path = %q, want /api/status", receivedPath)
+	}
+	if receivedToken != "secret" {
+		t.Fatalf("X-API-Token = %q, want original token", receivedToken)
+	}
+	if prepared.Method() != http.MethodGet || prepared.Path() != "/api/status" {
+		t.Fatalf("prepared method/path = %s %s", prepared.Method(), prepared.Path())
+	}
+	if prepared.ResponseMode() != ResponseModeJSON || prepared.RequestID() != "rid-1" {
+		t.Fatalf("prepared response mode/request ID = %v %q", prepared.ResponseMode(), prepared.RequestID())
 	}
 }
 
@@ -841,9 +893,8 @@ func TestExecutionRejectsNilContextAndMalformedPreparedRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Prepare: %v", err)
 	}
-	prepared.Header = nil
 	if _, err := client.DoPrepared(context.Background(), prepared); err != nil {
-		t.Fatalf("DoPrepared with cleared exported header: %v", err)
+		t.Fatalf("DoPrepared: %v", err)
 	}
 }
 
@@ -1016,7 +1067,7 @@ func TestDoPreparedDoesNotMutatePreparedHeaders(t *testing.T) {
 	if _, err := client.DoPrepared(context.Background(), prepared); err != nil {
 		t.Fatalf("DoPrepared: %v", err)
 	}
-	if got := prepared.Header.Get("X-API-Sem-Ver"); got != "" {
+	if got := prepared.Header().Get("X-API-Sem-Ver"); got != "" {
 		t.Fatalf("prepared X-API-Sem-Ver = %q, want unchanged empty header", got)
 	}
 	if drawCalls != 2 {

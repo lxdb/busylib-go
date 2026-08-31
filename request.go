@@ -26,19 +26,35 @@ type Request struct {
 	SessionID    string
 }
 
-// PreparedRequest is a normalized request description returned by Prepare.
+// PreparedRequest is an immutable normalized request returned by Prepare.
 // It is safe to execute more than once only when the request body is repeatable.
-// DoPrepared never mutates the exported request fields.
 type PreparedRequest struct {
-	Method       string
-	Path         string
-	URL          *url.URL
-	Header       http.Header
-	ResponseMode ResponseMode
-	RequestID    string
-
-	body *preparedBody
+	method       string
+	path         string
+	targetURL    url.URL
+	header       http.Header
+	responseMode ResponseMode
+	requestID    string
+	body         *preparedBody
 }
+
+// Method returns the normalized HTTP method.
+func (p *PreparedRequest) Method() string { return p.method }
+
+// Path returns the canonical API path.
+func (p *PreparedRequest) Path() string { return p.path }
+
+// URL returns a copy of the normalized target URL.
+func (p *PreparedRequest) URL() url.URL { return p.targetURL }
+
+// Header returns a copy of the prepared HTTP headers.
+func (p *PreparedRequest) Header() http.Header { return p.header.Clone() }
+
+// ResponseMode returns the validated response mode.
+func (p *PreparedRequest) ResponseMode() ResponseMode { return p.responseMode }
+
+// RequestID returns the request correlation identifier.
+func (p *PreparedRequest) RequestID() string { return p.requestID }
 
 // Prepare validates a request and creates a reusable transport-ready value.
 // Each DoPrepared call receives its own copy of mutable request state.
@@ -105,12 +121,12 @@ func (c *Client) Prepare(request Request) (*PreparedRequest, error) {
 	}
 
 	return &PreparedRequest{
-		Method:       method,
-		Path:         path,
-		URL:          &targetURL,
-		Header:       header,
-		ResponseMode: responseMode,
-		RequestID:    requestID,
+		method:       method,
+		path:         path,
+		targetURL:    targetURL,
+		header:       header,
+		responseMode: responseMode,
+		requestID:    requestID,
 		body:         body,
 	}, nil
 }
@@ -143,8 +159,8 @@ func (c *Client) doStreamTo(ctx context.Context, request Request, writer io.Writ
 }
 
 // DoPrepared executes a request created by Prepare.
-// It does not mutate the exported PreparedRequest fields. A prepared request
-// can be executed multiple times only when its body is repeatable.
+// A prepared request can be executed multiple times only when its body is
+// repeatable.
 func (c *Client) DoPrepared(ctx context.Context, prepared *PreparedRequest) (*Response, error) {
 	ctx, cancel, execution, err := c.preparedExecution(ctx, prepared)
 	if cancel != nil {
@@ -176,11 +192,11 @@ func (c *Client) preparedExecution(ctx context.Context, prepared *PreparedReques
 	if prepared == nil {
 		return ctx, nil, nil, validationError("", "", "prepared request must not be nil", nil)
 	}
-	if prepared.URL == nil || prepared.body == nil {
-		return ctx, nil, nil, validationError(prepared.Method, prepared.Path, "prepared request is incomplete", nil)
+	if prepared.body == nil || prepared.targetURL.Scheme == "" || prepared.targetURL.Host == "" {
+		return ctx, nil, nil, validationError(prepared.method, prepared.path, "prepared request is incomplete", nil)
 	}
-	if _, err := validateResponseMode(prepared.ResponseMode); err != nil {
-		return ctx, nil, nil, validationError(prepared.Method, prepared.Path, "", err)
+	if _, err := validateResponseMode(prepared.responseMode); err != nil {
+		return ctx, nil, nil, validationError(prepared.method, prepared.path, "", err)
 	}
 	var cancel context.CancelFunc
 	if c.timeout > 0 {
@@ -219,14 +235,14 @@ type executionRequest struct {
 }
 
 func (p *PreparedRequest) executionCopy() *executionRequest {
-	targetURL := *p.URL
+	targetURL := p.targetURL
 	return &executionRequest{
-		method:           p.Method,
-		path:             p.Path,
+		method:           p.method,
+		path:             p.path,
 		url:              &targetURL,
-		header:           p.Header.Clone(),
-		responseMode:     p.ResponseMode,
-		requestID:        p.RequestID,
+		header:           p.header.Clone(),
+		responseMode:     p.responseMode,
+		requestID:        p.requestID,
 		body:             p.body,
 		maxResponseBytes: 0,
 	}
