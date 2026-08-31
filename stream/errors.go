@@ -10,6 +10,12 @@ import (
 // remote device client when a point-in-time snapshot is required.
 var ErrSnapshotUnsupported = errors.New("status stream snapshot requests are unsupported by this transport")
 
+// ErrNotStarted reports Wait on a stream that has not been started or stopped.
+var ErrNotStarted = errors.New("status stream has not been started")
+
+// ErrAlreadyStarted reports a second attempt to start a one-shot stream.
+var ErrAlreadyStarted = errors.New("status stream has already been started")
+
 // Error is a status-stream transport, lifecycle, or protocol failure. Path is
 // a query-free WebSocket path or an MQTT topic, so credentials cannot leak
 // through errors.

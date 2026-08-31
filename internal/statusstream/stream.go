@@ -3,7 +3,6 @@ package statusstream
 import (
 	"context"
 	"errors"
-	"net"
 	"net/http"
 	"net/url"
 	"sync"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/lxdb/busylib-go/internal/statusdecode"
+	"github.com/lxdb/busylib-go/internal/streamstate"
 	publicstream "github.com/lxdb/busylib-go/stream"
 )
 
@@ -35,19 +35,12 @@ type Config struct {
 type Stream struct {
 	config  Config
 	options publicstream.Options
+	state   *streamstate.State
 
-	messages chan publicstream.Message
-	statuses chan publicstream.Status
-	errors   chan error
-	done     chan struct{}
-
-	mu        sync.Mutex
-	status    publicstream.Status
-	started   bool
-	cancel    context.CancelFunc
-	conn      *websocket.Conn
-	writeMu   sync.Mutex
-	closeOnce sync.Once
+	mu      sync.Mutex
+	cancel  context.CancelFunc
+	conn    *websocket.Conn
+	writeMu sync.Mutex
 }
 
 func New(config Config, options ...publicstream.Option) (*Stream, error) {
@@ -66,31 +59,17 @@ func New(config Config, options ...publicstream.Option) (*Stream, error) {
 	}
 
 	instance := &Stream{
-		config:   config,
-		options:  resolved,
-		messages: make(chan publicstream.Message, messageBuffer),
-		statuses: make(chan publicstream.Status, 1),
-		errors:   make(chan error, 1),
-		done:     make(chan struct{}),
-		status: publicstream.Status{
-			Lifecycle: publicstream.LifecycleIdle,
-			Access:    publicstream.AccessUnknown,
-			Data:      publicstream.DataWaiting,
-		},
+		config:  config,
+		options: resolved,
+		state:   streamstate.New(messageBuffer),
 	}
-	instance.statuses <- instance.status
 	return instance, nil
 }
 
-func (s *Stream) Messages() <-chan publicstream.Message { return s.messages }
-func (s *Stream) Statuses() <-chan publicstream.Status  { return s.statuses }
-func (s *Stream) Errors() <-chan error                  { return s.errors }
-
-func (s *Stream) Status() publicstream.Status {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.status
-}
+func (s *Stream) Messages() <-chan publicstream.Message { return s.state.Messages() }
+func (s *Stream) Statuses() <-chan publicstream.Status  { return s.state.Statuses() }
+func (s *Stream) Status() publicstream.Status           { return s.state.Status() }
+func (s *Stream) Wait() error                           { return s.state.Wait() }
 
 func (s *Stream) Start(ctx context.Context) error {
 	if ctx == nil {
@@ -98,11 +77,10 @@ func (s *Stream) Start(ctx context.Context) error {
 	}
 
 	s.mu.Lock()
-	if s.started {
+	if err := s.state.Begin(); err != nil {
 		s.mu.Unlock()
-		return errors.New("status stream has already been started")
+		return err
 	}
-	s.started = true
 	runCtx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
 	s.mu.Unlock()
@@ -118,10 +96,10 @@ func (s *Stream) Start(ctx context.Context) error {
 	if err != nil {
 		if runCtx.Err() != nil {
 			err = runCtx.Err()
-			s.finish(nil, false)
+			s.finish(err)
 			return err
 		}
-		s.finish(err, false)
+		s.finish(err)
 		return err
 	}
 
@@ -131,28 +109,18 @@ func (s *Stream) Start(ctx context.Context) error {
 
 func (s *Stream) Stop() error {
 	s.mu.Lock()
-	if !s.started {
-		s.started = true
+	if s.state.StopBeforeStart() {
 		s.mu.Unlock()
-		s.finish(nil, false)
-		return nil
+		s.finish(nil)
+		return s.Wait()
 	}
 	cancel := s.cancel
-	conn := s.conn
 	s.mu.Unlock()
 
 	if cancel != nil {
 		cancel()
 	}
-	var closeErr error
-	if conn != nil {
-		closeErr = conn.CloseNow()
-	}
-	<-s.done
-	if errors.Is(closeErr, net.ErrClosed) {
-		return nil
-	}
-	return closeErr
+	return s.Wait()
 }
 
 func (s *Stream) RequestSnapshot(ctx context.Context) error {
@@ -162,7 +130,7 @@ func (s *Stream) RequestSnapshot(ctx context.Context) error {
 
 	s.mu.Lock()
 	conn := s.conn
-	connected := s.status.Lifecycle == publicstream.LifecycleConnected && conn != nil
+	connected := s.state.Status().Lifecycle == publicstream.LifecycleConnected && conn != nil
 	s.mu.Unlock()
 	if !connected {
 		return errors.New("status stream is not connected")
@@ -184,11 +152,11 @@ func (s *Stream) run(ctx context.Context, conn *websocket.Conn) {
 		result := s.readConnection(ctx, conn)
 		_ = conn.CloseNow()
 		if ctx.Err() != nil {
-			s.finish(nil, false)
+			s.finish(nil)
 			return
 		}
 		if result.terminal {
-			s.finish(result.err, true)
+			s.finish(result.err)
 			return
 		}
 
@@ -206,9 +174,9 @@ func (s *Stream) run(ctx context.Context, conn *websocket.Conn) {
 		next, err := s.connectWithRetry(ctx, publicstream.LifecycleReconnecting)
 		if err != nil {
 			if ctx.Err() != nil {
-				s.finish(nil, false)
+				s.finish(nil)
 			} else {
-				s.finish(err, true)
+				s.finish(err)
 			}
 			return
 		}
@@ -246,17 +214,16 @@ func (s *Stream) readConnection(ctx context.Context, conn *websocket.Conn) readR
 				status.LastStateAt = message.ReceivedAt
 			})
 		}
-		select {
-		case s.messages <- message:
-		case <-ctx.Done():
-			return readResult{err: ctx.Err()}
-		default:
+		if err := s.state.Deliver(ctx, message, errConsumerTooSlow); err != nil {
+			if ctx.Err() != nil {
+				return readResult{err: ctx.Err()}
+			}
 			return readResult{
 				err: &publicstream.Error{
 					Operation: "deliver",
 					Path:      statusStreamPath,
 					Terminal:  true,
-					Err:       errConsumerTooSlow,
+					Err:       err,
 				},
 				terminal: true,
 			}
@@ -332,17 +299,18 @@ func (s *Stream) connectWithRetry(ctx context.Context, lifecycle publicstream.Li
 		if failure == nil {
 			s.mu.Lock()
 			s.conn = conn
-			s.status.Lifecycle = publicstream.LifecycleConnected
-			s.status.Access = publicstream.AccessAccepted
-			if s.status.LastStateAt.IsZero() {
-				s.status.Data = publicstream.DataWaiting
-			} else {
-				s.status.Data = publicstream.DataStale
-			}
-			s.status.ConnectedAt = time.Now()
-			s.status.LastError = nil
-			s.publishStatusLocked()
 			s.mu.Unlock()
+			s.setStatus(func(status *publicstream.Status) {
+				status.Lifecycle = publicstream.LifecycleConnected
+				status.Access = publicstream.AccessAccepted
+				if status.LastStateAt.IsZero() {
+					status.Data = publicstream.DataWaiting
+				} else {
+					status.Data = publicstream.DataStale
+				}
+				status.ConnectedAt = time.Now()
+				status.LastError = nil
+			})
 			return conn, nil
 		}
 		lastErr = failure
@@ -465,49 +433,14 @@ func streamError(operation string, attempt, statusCode int, err error) *publicst
 }
 
 func (s *Stream) setStatus(change func(*publicstream.Status)) {
+	s.state.SetStatus(change)
+}
+
+func (s *Stream) finish(err error) {
 	s.mu.Lock()
-	change(&s.status)
-	s.publishStatusLocked()
+	s.conn = nil
 	s.mu.Unlock()
-}
-
-func (s *Stream) publishStatusLocked() {
-	select {
-	case s.statuses <- s.status:
-		return
-	default:
-	}
-	select {
-	case <-s.statuses:
-	default:
-	}
-	select {
-	case s.statuses <- s.status:
-	default:
-	}
-}
-
-func (s *Stream) finish(err error, emitTerminal bool) {
-	s.closeOnce.Do(func() {
-		s.mu.Lock()
-		s.conn = nil
-		if err == nil {
-			s.status.Lifecycle = publicstream.LifecycleStopped
-		} else {
-			s.status.Lifecycle = publicstream.LifecycleFailed
-			s.status.LastError = err
-		}
-		s.publishStatusLocked()
-		s.mu.Unlock()
-
-		if emitTerminal && err != nil {
-			s.errors <- err
-		}
-		close(s.messages)
-		close(s.statuses)
-		close(s.errors)
-		close(s.done)
-	})
+	s.state.Finish(err, nil)
 }
 
 func wait(ctx context.Context, duration time.Duration) error {

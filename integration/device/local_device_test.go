@@ -69,13 +69,11 @@ func TestLocalDeviceStatusStreamLifecycle(t *testing.T) {
 	select {
 	case message, ok := <-statusStream.Messages():
 		if !ok {
-			t.Fatal("status stream closed before delivering a message")
+			t.Fatalf("status stream closed before delivering a message: %v", statusStream.Wait())
 		}
 		if message.State == nil && len(message.Updates) == 0 {
 			t.Fatalf("status stream delivered an empty message: %#v", message)
 		}
-	case err := <-statusStream.Errors():
-		t.Fatalf("status stream error: %v", err)
 	case <-ctx.Done():
 		t.Fatalf("status stream message: %v", ctx.Err())
 	}

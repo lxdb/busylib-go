@@ -418,6 +418,12 @@ func TestStatusStreamRejectsForbiddenHandshakeWithoutRetry(t *testing.T) {
 	if got := calls.Load(); got != 1 {
 		t.Fatalf("handshake calls = %d, want 1", got)
 	}
+	if waitErr := statusStream.Wait(); !errors.Is(waitErr, err) {
+		t.Fatalf("Wait error = %v, want startup error %v", waitErr, err)
+	}
+	if startErr := statusStream.Start(context.Background()); !errors.Is(startErr, publicstream.ErrAlreadyStarted) {
+		t.Fatalf("second Start error = %v, want ErrAlreadyStarted", startErr)
+	}
 	status := statusStream.Status()
 	if status.Lifecycle != publicstream.LifecycleFailed || status.Access != publicstream.AccessRejected {
 		t.Fatalf("status = %#v", status)
@@ -449,7 +455,7 @@ func TestStatusStreamReconnectExhaustionIsTerminal(t *testing.T) {
 	if err := statusStream.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	terminal := receiveStreamValue(t, statusStream.Errors())
+	terminal := waitForStream(t, statusStream)
 	var streamErr *publicstream.Error
 	if !errors.As(terminal, &streamErr) || !streamErr.Terminal || streamErr.StatusCode != http.StatusServiceUnavailable || streamErr.Attempt != 2 {
 		t.Fatalf("terminal error = %#v", terminal)
@@ -546,7 +552,7 @@ func TestStatusStreamRejectsOversizedMessageAndReconnects(t *testing.T) {
 	if err := statusStream.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	terminal := receiveStreamValue(t, statusStream.Errors())
+	terminal := waitForStream(t, statusStream)
 	var streamErr *publicstream.Error
 	if !errors.As(terminal, &streamErr) || !streamErr.Terminal || streamErr.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("terminal error = %#v", terminal)
@@ -603,7 +609,7 @@ func TestStatusStreamFatalDeviceErrorIsDeliveredThenTerminates(t *testing.T) {
 	if fatal.DeviceError == nil || fatal.DeviceError.Severity != errorpb.Severity_FATAL {
 		t.Fatalf("fatal message = %#v", fatal)
 	}
-	terminal := receiveStreamValue(t, statusStream.Errors())
+	terminal := waitForStream(t, statusStream)
 	var streamErr *publicstream.Error
 	if !errors.As(terminal, &streamErr) || !streamErr.Terminal || streamErr.Operation != "device error" {
 		t.Fatalf("terminal error = %T %v", terminal, terminal)
@@ -639,7 +645,7 @@ func TestStatusStreamSlowConsumerFailsWithoutDroppingSilently(t *testing.T) {
 	if err := statusStream.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	terminal := receiveStreamValue(t, statusStream.Errors())
+	terminal := waitForStream(t, statusStream)
 	var streamErr *publicstream.Error
 	if !errors.As(terminal, &streamErr) || streamErr.Operation != "deliver" || !streamErr.Terminal {
 		t.Fatalf("terminal error = %T %v", terminal, terminal)
@@ -672,6 +678,12 @@ func TestStatusStreamStopIsIdempotentAndRemoteIsRejected(t *testing.T) {
 	if err := statusStream.Stop(); err != nil {
 		t.Fatalf("second Stop: %v", err)
 	}
+	if err := statusStream.Wait(); err != nil {
+		t.Fatalf("first Wait: %v", err)
+	}
+	if err := statusStream.Wait(); err != nil {
+		t.Fatalf("second Wait: %v", err)
+	}
 	if status := statusStream.Status(); status.Lifecycle != publicstream.LifecycleStopped {
 		t.Fatalf("status = %#v", status)
 	}
@@ -691,6 +703,15 @@ func TestStatusStreamStopIsIdempotentAndRemoteIsRejected(t *testing.T) {
 	var validationErr *ValidationError
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("remote stream error = %T %v", err, err)
+	}
+}
+
+func TestStatusStreamWaitBeforeStartReturnsNotStarted(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	statusStream := newTestStatusStream(t, server)
+	if err := statusStream.Wait(); !errors.Is(err, publicstream.ErrNotStarted) {
+		t.Fatalf("Wait error = %v, want ErrNotStarted", err)
 	}
 }
 
@@ -757,6 +778,19 @@ func receiveStreamValue[T any](t *testing.T, channel <-chan T) T {
 		t.Fatal("timed out waiting for stream value")
 		var zero T
 		return zero
+	}
+}
+
+func waitForStream(t *testing.T, statusStream publicstream.Stream) error {
+	t.Helper()
+	result := make(chan error, 1)
+	go func() { result <- statusStream.Wait() }()
+	select {
+	case err := <-result:
+		return err
+	case <-time.After(streamTestTimeout):
+		t.Fatal("timed out waiting for stream completion")
+		return nil
 	}
 }
 

@@ -114,17 +114,26 @@ func TestRemoteStatusStreamRejectsOversizedMessages(t *testing.T) {
 	transport.waitPublished(t, 1)
 	transport.deliver(Message{Topic: topic, Payload: []byte("12345")})
 
+	streamErr := waitForRemoteStream(t, statusStream)
+	if !errors.Is(streamErr, ErrMessageTooLarge) {
+		t.Fatalf("stream error = %v, want ErrMessageTooLarge", streamErr)
+	}
+	var typed *publicstream.Error
+	if !errors.As(streamErr, &typed) || !typed.Terminal || typed.Operation != "receive" {
+		t.Fatalf("stream error = %#v, want terminal receive error", streamErr)
+	}
+}
+
+func waitForRemoteStream(t *testing.T, statusStream publicstream.Stream) error {
+	t.Helper()
+	result := make(chan error, 1)
+	go func() { result <- statusStream.Wait() }()
 	select {
-	case streamErr := <-statusStream.Errors():
-		if !errors.Is(streamErr, ErrMessageTooLarge) {
-			t.Fatalf("stream error = %v, want ErrMessageTooLarge", streamErr)
-		}
-		var typed *publicstream.Error
-		if !errors.As(streamErr, &typed) || !typed.Terminal || typed.Operation != "receive" {
-			t.Fatalf("stream error = %#v, want terminal receive error", streamErr)
-		}
+	case err := <-result:
+		return err
 	case <-time.After(time.Second):
-		t.Fatal("oversized stream message did not stop the stream")
+		t.Fatal("timed out waiting for remote stream completion")
+		return nil
 	}
 }
 

@@ -17,13 +17,17 @@ import (
 // Stream is a one-shot BUSY Bar status-stream subscription. Local WebSocket
 // and remote MQTT implementations share this lifecycle contract.
 type Stream interface {
+	// Start opens the one-shot stream. A second call returns ErrAlreadyStarted.
 	Start(context.Context) error
+	// Stop requests clean shutdown and waits for owned resources to close.
 	Stop() error
 	RequestSnapshot(context.Context) error
 	Messages() <-chan Message
 	Statuses() <-chan Status
-	Errors() <-chan error
 	Status() Status
+	// Wait returns the stable terminal or cleanup error. Before Start or Stop it
+	// returns ErrNotStarted.
+	Wait() error
 }
 
 // MessageKind identifies the wire representation of a received message.

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/lxdb/busylib-go/internal/statusdecode"
+	"github.com/lxdb/busylib-go/internal/streamstate"
 	publicstream "github.com/lxdb/busylib-go/stream"
 )
 
@@ -26,18 +27,12 @@ type statusStream struct {
 	options         publicstream.Options
 	release         func(*statusStream)
 
-	messages chan publicstream.Message
-	statuses chan publicstream.Status
-	errors   chan error
-	done     chan struct{}
+	state *streamstate.State
 
 	mu           sync.Mutex
-	status       publicstream.Status
-	started      bool
 	activated    bool
 	cancel       context.CancelFunc
 	subscription Subscription
-	closeOnce    sync.Once
 	stopOnce     sync.Once
 	stopErr      error
 	closeErr     error
@@ -73,40 +68,25 @@ func newStatusStream(transport Transport, config clientConfig, options []publics
 		maxMessageBytes: config.maxMessageBytes,
 		options:         resolved,
 		release:         release,
-		messages:        make(chan publicstream.Message, remoteMessageBuffer),
-		statuses:        make(chan publicstream.Status, 1),
-		errors:          make(chan error, 1),
-		done:            make(chan struct{}),
-		status: publicstream.Status{
-			Lifecycle: publicstream.LifecycleIdle,
-			Access:    publicstream.AccessUnknown,
-			Data:      publicstream.DataWaiting,
-		},
+		state:           streamstate.New(remoteMessageBuffer),
 	}
-	stream.statuses <- stream.status
 	return stream, nil
 }
 
-func (s *statusStream) Messages() <-chan publicstream.Message { return s.messages }
-func (s *statusStream) Statuses() <-chan publicstream.Status  { return s.statuses }
-func (s *statusStream) Errors() <-chan error                  { return s.errors }
-
-func (s *statusStream) Status() publicstream.Status {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.status
-}
+func (s *statusStream) Messages() <-chan publicstream.Message { return s.state.Messages() }
+func (s *statusStream) Statuses() <-chan publicstream.Status  { return s.state.Statuses() }
+func (s *statusStream) Status() publicstream.Status           { return s.state.Status() }
+func (s *statusStream) Wait() error                           { return s.state.Wait() }
 
 func (s *statusStream) Start(ctx context.Context) error {
 	if ctx == nil {
 		return errors.New("remote status stream context must not be nil")
 	}
 	s.mu.Lock()
-	if s.started {
+	if err := s.state.Begin(); err != nil {
 		s.mu.Unlock()
-		return errors.New("remote status stream has already been started")
+		return err
 	}
-	s.started = true
 	runCtx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
 	s.mu.Unlock()
@@ -121,10 +101,10 @@ func (s *statusStream) Start(ctx context.Context) error {
 	if err != nil {
 		if runCtx.Err() != nil {
 			err = runCtx.Err()
-			s.finish(nil, false)
+			s.finish(err)
 			return err
 		}
-		s.finish(err, false)
+		s.finish(err)
 		return err
 	}
 	s.mu.Lock()
@@ -136,29 +116,17 @@ func (s *statusStream) Start(ctx context.Context) error {
 
 func (s *statusStream) Stop() error {
 	s.mu.Lock()
-	if !s.started {
-		s.started = true
+	if s.state.StopBeforeStart() {
 		s.mu.Unlock()
-		s.finish(nil, false)
-		return nil
+		s.finish(nil)
+		return s.Wait()
 	}
 	cancel := s.cancel
-	subscription := s.subscription
 	s.mu.Unlock()
 	if cancel != nil {
 		cancel()
 	}
-	if subscription != nil {
-		if err := subscription.Close(); err != nil {
-			closeErr := streamTransportError("close", s.responseTopic, 0, err)
-			markStreamErrorTerminal(closeErr)
-			s.recordCloseError(closeErr)
-		}
-	}
-	<-s.done
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return errors.Join(s.stopErr, s.closeErr)
+	return s.Wait()
 }
 
 func (s *statusStream) RequestSnapshot(context.Context) error {
@@ -176,11 +144,11 @@ func (s *statusStream) run(ctx context.Context, subscription Subscription) {
 			}
 		}
 		if ctx.Err() != nil {
-			s.finish(nil, false)
+			s.finish(nil)
 			return
 		}
 		if result.terminal {
-			s.finish(result.err, true)
+			s.finish(result.err)
 			return
 		}
 
@@ -197,9 +165,9 @@ func (s *statusStream) run(ctx context.Context, subscription Subscription) {
 		next, err := s.connectWithRetry(ctx, publicstream.LifecycleReconnecting)
 		if err != nil {
 			if ctx.Err() != nil {
-				s.finish(nil, false)
+				s.finish(nil)
 			} else {
-				s.finish(err, true)
+				s.finish(err)
 			}
 			return
 		}
@@ -291,13 +259,12 @@ func (s *statusStream) readSubscription(ctx context.Context, subscription Subscr
 					status.LastStateAt = message.ReceivedAt
 				})
 			}
-			select {
-			case s.messages <- message:
-			case <-ctx.Done():
-				return remoteReadResult{err: ctx.Err()}
-			default:
+			if err := s.state.Deliver(ctx, message, errRemoteConsumerTooSlow); err != nil {
+				if ctx.Err() != nil {
+					return remoteReadResult{err: ctx.Err()}
+				}
 				return remoteReadResult{
-					err:      &publicstream.Error{Operation: "deliver", Path: s.responseTopic, Terminal: true, Err: errRemoteConsumerTooSlow},
+					err:      &publicstream.Error{Operation: "deliver", Path: s.responseTopic, Terminal: true, Err: err},
 					terminal: true,
 				}
 			}
@@ -326,17 +293,18 @@ func (s *statusStream) connectWithRetry(ctx context.Context, lifecycle publicstr
 		if err == nil {
 			s.mu.Lock()
 			s.subscription = subscription
-			s.status.Lifecycle = publicstream.LifecycleConnected
-			s.status.Access = publicstream.AccessAccepted
-			if s.status.LastStateAt.IsZero() {
-				s.status.Data = publicstream.DataWaiting
-			} else {
-				s.status.Data = publicstream.DataStale
-			}
-			s.status.ConnectedAt = time.Now()
-			s.status.LastError = nil
-			s.publishStatusLocked()
 			s.mu.Unlock()
+			s.setStatus(func(status *publicstream.Status) {
+				status.Lifecycle = publicstream.LifecycleConnected
+				status.Access = publicstream.AccessAccepted
+				if status.LastStateAt.IsZero() {
+					status.Data = publicstream.DataWaiting
+				} else {
+					status.Data = publicstream.DataStale
+				}
+				status.ConnectedAt = time.Now()
+				status.LastError = nil
+			})
 			return subscription, nil
 		}
 		if subscription != nil {
@@ -445,51 +413,20 @@ func (s *statusStream) recordCloseError(err error) {
 }
 
 func (s *statusStream) setStatus(change func(*publicstream.Status)) {
-	s.mu.Lock()
-	change(&s.status)
-	s.publishStatusLocked()
-	s.mu.Unlock()
+	s.state.SetStatus(change)
 }
 
-func (s *statusStream) publishStatusLocked() {
-	select {
-	case s.statuses <- s.status:
-		return
-	default:
-	}
-	select {
-	case <-s.statuses:
-	default:
-	}
-	select {
-	case s.statuses <- s.status:
-	default:
-	}
-}
-
-func (s *statusStream) finish(err error, emitTerminal bool) {
-	s.closeOnce.Do(func() {
+func (s *statusStream) finish(err error) {
+	s.state.Finish(err, func() error {
 		s.publishStop()
 		s.mu.Lock()
 		s.subscription = nil
-		if err == nil {
-			s.status.Lifecycle = publicstream.LifecycleStopped
-		} else {
-			s.status.Lifecycle = publicstream.LifecycleFailed
-			s.status.LastError = err
-		}
-		s.publishStatusLocked()
+		cleanupErr := errors.Join(s.stopErr, s.closeErr)
 		s.mu.Unlock()
-		if emitTerminal && err != nil {
-			s.errors <- err
-		}
-		close(s.messages)
-		close(s.statuses)
-		close(s.errors)
 		if s.release != nil {
 			s.release(s)
 		}
-		close(s.done)
+		return cleanupErr
 	})
 }
 
