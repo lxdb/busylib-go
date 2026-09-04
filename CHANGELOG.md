@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.0](https://github.com/lxdb/busylib-go/compare/v0.1.0...v0.2.0) (2026-09-04)
+
+
+### Features
+
+* **auth:** support minted local access tokens ([92b614b](https://github.com/lxdb/busylib-go/commit/92b614be01f0184cf2bcb8a2b710e63b63bee3ea))
+* **media:** add layered display and asset contracts ([b08dd85](https://github.com/lxdb/busylib-go/commit/b08dd856ca3d0adc29a1e73c593adc5d05559683))
+* **storage:** support append writes ([e9729aa](https://github.com/lxdb/busylib-go/commit/e9729aab8538e10140c07fe03c71895405b66fd4))
+
+
+### Bug Fixes
+
+* **docscheck:** remove ineffective scanner break ([cec1398](https://github.com/lxdb/busylib-go/commit/cec1398fbed9b6f9f4bd181d070cac325c0b70ca))
+* **errors:** prefer firmware error codes ([a4c4515](https://github.com/lxdb/busylib-go/commit/a4c45159477ac3fcec7c04fc312443d218af2434))
+* update .gitignore to include new directories ([4d08854](https://github.com/lxdb/busylib-go/commit/4d08854f91d250529f7abee2551efde4b59bfe9c))
+
 ## 0.1.0 (2026-08-31)
 
 
