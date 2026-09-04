@@ -196,7 +196,6 @@ func inlineLinkTargets(content string) []string {
 						targets = append(targets, line[start:end])
 						end++
 						offset = end
-						break
 					}
 				}
 				if depth == 0 {
