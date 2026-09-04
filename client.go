@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-// Client sends local or remote HTTP requests to one BUSY Bar API endpoint.
-// A Client is safe for concurrent use.
+// Client sends requests to one BUSY Bar API endpoint. It is safe for concurrent
+// use and does not close a caller-supplied http.Client or its transport.
 type Client struct {
 	baseURL            *url.URL
 	httpClient         *http.Client
@@ -28,8 +28,11 @@ type Client struct {
 	versionInFlight *versionRefresh
 }
 
-// NewClient creates a client with the supplied options.
-// It returns an error when an option or endpoint configuration is invalid.
+// NewClient creates a client with the supplied options. With no options, it
+// uses DefaultLocalBaseURL, http.DefaultClient, a 10-second request timeout,
+// automatic API-version negotiation, and DefaultMaxResponseBytes.
+//
+// NewClient validates every option and the endpoint before returning a client.
 func NewClient(options ...Option) (*Client, error) {
 	config := defaultClientConfig()
 	for _, option := range options {
@@ -72,7 +75,8 @@ func NewClient(options ...Option) (*Client, error) {
 	}, nil
 }
 
-// BaseURL returns the normalized HTTP endpoint used by the client.
+// BaseURL returns the normalized endpoint origin used by the client. It never
+// includes a path, query, or fragment.
 func (c *Client) BaseURL() string {
 	return c.baseURL.String()
 }

@@ -120,12 +120,14 @@ type NameInfo struct {
 	Name string `json:"name"`
 }
 
-// DisplayBrightnessInfo contains the firmware brightness value.
+// DisplayBrightnessInfo contains "auto" or a percentage string from 0 through
+// 100.
 type DisplayBrightnessInfo struct {
 	Value string `json:"value"`
 }
 
-// DisplayElements defines one application display update.
+// DisplayElements defines one application display update. Elements share the
+// application name and priority; each element selects its own physical display.
 type DisplayElements struct {
 	ApplicationName      string           `json:"application_name"`
 	Priority             int              `json:"priority,omitempty"`
@@ -138,7 +140,9 @@ type DisplayElement interface {
 	displayElement()
 }
 
-// BaseDisplayElement contains placement and lifetime fields shared by display elements.
+// BaseDisplayElement contains placement and lifetime fields shared by display
+// elements. Positive Timeout and DisplayUntil values are mutually exclusive.
+// Nil coordinates omit explicit placement on the corresponding axis.
 type BaseDisplayElement struct {
 	ID           string        `json:"id"`
 	Timeout      *int          `json:"timeout,omitempty"`
@@ -352,25 +356,27 @@ func (e RectangleElement) MarshalJSON() ([]byte, error) {
 	}{Type: displayElementRectangle, alias: alias(e)})
 }
 
-// PlayAudio selects a stored or stock audio asset for playback.
+// PlayAudio selects exactly one uploaded Path or firmware StockPath for
+// playback.
 type PlayAudio struct {
 	ApplicationName string `json:"application_name"`
 	Path            string `json:"path,omitempty"`
 	StockPath       string `json:"stock_path,omitempty"`
 }
 
-// AudioVolumeInfo contains the current playback volume.
+// AudioVolumeInfo contains the current playback volume from 0 through 100.
 type AudioVolumeInfo struct {
 	Volume int `json:"volume"`
 }
 
-// SetAudioVolumeRequest changes playback volume and optional sound feedback.
+// SetAudioVolumeRequest changes playback volume from 0 through 100. Silent
+// suppresses the device's feedback sound.
 type SetAudioVolumeRequest struct {
 	Volume int
 	Silent bool
 }
 
-// UploadAssetRequest uploads an application asset from a file or body.
+// UploadAssetRequest stores Body as File under ApplicationName.
 type UploadAssetRequest struct {
 	ApplicationName string
 	File            string
@@ -412,13 +418,15 @@ type StorageStatus struct {
 	TotalBytes uint64 `json:"total_bytes"`
 }
 
-// BusySnapshot contains the current timer state and its device timestamp.
+// BusySnapshot contains the complete current timer state and its device
+// timestamp in milliseconds.
 type BusySnapshot struct {
 	Snapshot            BusySnapshotData `json:"snapshot"`
 	SnapshotTimestampMS int64            `json:"snapshot_timestamp_ms"`
 }
 
-// BusySnapshotData describes the active timer and Busy Bar settings.
+// BusySnapshotData describes the active timer and Busy Bar settings. Required
+// pointer fields depend on Type; Validate checks the complete combination.
 type BusySnapshotData struct {
 	Type                       BusySnapshotType           `json:"type"`
 	CardID                     string                     `json:"card_id,omitempty"`
@@ -445,7 +453,7 @@ const (
 	BusySnapshotInterval BusySnapshotType = "INTERVAL"
 )
 
-// BusyProfile defines a saved timer profile.
+// BusyProfile defines the complete contents of a saved timer profile.
 type BusyProfile struct {
 	SortOrder          int               `json:"sort_order"`
 	Title              string            `json:"title"`
@@ -465,7 +473,8 @@ const (
 	BusyProfileSlotCustom BusyProfileSlot = "custom"
 )
 
-// BusyTimerSettings configures an infinite, simple, or interval timer.
+// BusyTimerSettings configures an infinite, simple, or interval timer. Required
+// pointer fields depend on Type; duration fields use milliseconds.
 type BusyTimerSettings struct {
 	Type                    BusyTimerType `json:"type"`
 	TotalTimeMS             *int64        `json:"total_time_ms,omitempty"`
@@ -503,13 +512,15 @@ type BusyBarSettings struct {
 	TriggerSmartHome  bool   `json:"trigger_smart_home"`
 }
 
-// AccountLink contains a temporary account-link code and expiry time.
+// AccountLink contains a temporary account-link code and its firmware-provided
+// expiry time. Treat Code as authorization data.
 type AccountLink struct {
 	Code      string `json:"code"`
 	ExpiresAt int64  `json:"expires_at"`
 }
 
-// AccountInfo reports the account linked to the device.
+// AccountInfo reports the account linked to the device. Email and user IDs can
+// contain private account data.
 type AccountInfo struct {
 	Linked bool   `json:"linked"`
 	ID     string `json:"id"`
@@ -535,6 +546,8 @@ const (
 )
 
 // AccountBackend configures the account server and client certificate mode.
+// IgnoreServerCert asks the firmware to ignore server-certificate validation;
+// use it only with an explicitly trusted development endpoint.
 type AccountBackend struct {
 	ServerURL        string                `json:"server_url"`
 	ClientCertType   AccountClientCertType `json:"client_cert_type"`
@@ -621,7 +634,8 @@ type WiFiNetwork struct {
 	RSSI     int                `json:"rssi"`
 }
 
-// WiFiConnectRequest configures a Wi-Fi connection request.
+// WiFiConnectRequest configures a Wi-Fi connection request. Password contains
+// network credentials and should not be logged.
 type WiFiConnectRequest struct {
 	SSID     string              `json:"ssid"`
 	Password string              `json:"password"`
@@ -738,7 +752,8 @@ const (
 	SmartHomePairingFailed SmartHomePairingStatus = "failed"
 )
 
-// SmartHomePairingPayload contains codes for a temporary Matter pairing session.
+// SmartHomePairingPayload contains codes for a temporary Matter pairing
+// session. Treat QRCode and ManualCode as temporary credentials.
 type SmartHomePairingPayload struct {
 	AvailableUntil string `json:"available_until"`
 	QRCode         string `json:"qr_code"`
@@ -923,7 +938,8 @@ type UpdateChangelog struct {
 }
 
 // AutoUpdateSettings configures automatic updates and their daily time window.
-// Nil IsEnabled leaves the current enabled state unchanged when updating settings.
+// IntervalStart and IntervalEnd use 24-hour HH:MM values. Nil IsEnabled leaves
+// the current enabled state unchanged when updating settings.
 type AutoUpdateSettings struct {
 	IsEnabled     *bool  `json:"is_enabled,omitempty"`
 	IntervalStart string `json:"interval_start,omitempty"`

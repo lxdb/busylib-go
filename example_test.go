@@ -12,7 +12,7 @@ import (
 )
 
 func ExampleClient() {
-	client, err := busylib.NewClient(busylib.WithBaseURL("http://10.0.4.20"))
+	client, err := busylib.NewClient()
 	if err != nil {
 		log.Print(err)
 		return

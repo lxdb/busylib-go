@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// DefaultLocalBaseURL is the BUSY Bar USB network endpoint.
+// DefaultLocalBaseURL is the BUSY Bar USB-network HTTP endpoint.
 const DefaultLocalBaseURL = "http://10.0.4.20"
 
 const (
@@ -20,10 +20,11 @@ const (
 
 const defaultTimeout = 10 * time.Second
 
-// DefaultMaxResponseBytes bounds responses buffered in memory.
+// DefaultMaxResponseBytes is the maximum response body buffered in memory by
+// default.
 const DefaultMaxResponseBytes int64 = 1 << 20
 
-// EndpointMode selects local-device or remote-service request rules.
+// EndpointMode selects local-device or remote-transport request rules.
 type EndpointMode string
 
 const (
@@ -51,7 +52,7 @@ type RetryPolicy struct {
 	Backoff     time.Duration
 }
 
-// Option configures a Client during NewClient.
+// Option configures a Client during NewClient. A nil Option is ignored.
 type Option func(*clientConfig) error
 
 type clientConfig struct {
@@ -84,8 +85,8 @@ func defaultClientConfig() clientConfig {
 	}
 }
 
-// WithMaxResponseBytes changes the maximum response size buffered in memory.
-// Use Storage.ReadTo for larger storage files.
+// WithMaxResponseBytes changes the positive response-size limit used by all
+// buffered response modes. Use StorageService.ReadTo for larger storage files.
 func WithMaxResponseBytes(maximum int64) Option {
 	return func(config *clientConfig) error {
 		if maximum <= 0 {
@@ -96,7 +97,8 @@ func WithMaxResponseBytes(maximum int64) Option {
 	}
 }
 
-// WithBaseURL sets the device or remote-service HTTP endpoint.
+// WithBaseURL sets the endpoint origin. A hostname or IP address without a
+// scheme uses HTTP. Any path, query, or fragment is discarded.
 func WithBaseURL(baseURL string) Option {
 	return func(config *clientConfig) error {
 		if baseURL == "" {
@@ -108,7 +110,8 @@ func WithBaseURL(baseURL string) Option {
 	}
 }
 
-// WithHTTPClient sets the HTTP client used for all API requests.
+// WithHTTPClient sets the HTTP client used for all API requests. Client does
+// not close the supplied client or its underlying transport.
 func WithHTTPClient(httpClient *http.Client) Option {
 	return func(config *clientConfig) error {
 		if httpClient == nil {
@@ -120,7 +123,8 @@ func WithHTTPClient(httpClient *http.Client) Option {
 	}
 }
 
-// WithTimeout limits each request when its context has no earlier deadline.
+// WithTimeout limits each request when its context has no earlier deadline. A
+// zero duration disables the client timeout; a negative duration is invalid.
 func WithTimeout(timeout time.Duration) Option {
 	return func(config *clientConfig) error {
 		if timeout < 0 {
@@ -131,7 +135,9 @@ func WithTimeout(timeout time.Duration) Option {
 	}
 }
 
-// WithEndpointMode selects local-device or remote-service request behavior.
+// WithEndpointMode selects local-device or remote-transport request behavior.
+// Remote mode also requires WithBaseURL and WithHTTPClient and rejects
+// WithLocalAccessKey. Applications normally use remote.NewClient instead.
 func WithEndpointMode(mode EndpointMode) Option {
 	return func(config *clientConfig) error {
 		switch mode {
@@ -144,8 +150,8 @@ func WithEndpointMode(mode EndpointMode) Option {
 	}
 }
 
-// WithLocalAccessKey adds a local device API token to requests.
-// Remote mode does not accept this option.
+// WithLocalAccessKey adds a local device API token to requests. Remote mode
+// rejects this option. Callers must not also set X-API-Token in Request.Header.
 func WithLocalAccessKey(key string) Option {
 	return func(config *clientConfig) error {
 		config.localAccessKey = key
@@ -153,7 +159,8 @@ func WithLocalAccessKey(key string) Option {
 	}
 }
 
-// WithSessionID adds a stable session identifier to requests.
+// WithSessionID adds a default x-session-id header to requests. Request.SessionID
+// overrides it for one request.
 func WithSessionID(sessionID string) Option {
 	return func(config *clientConfig) error {
 		config.sessionID = sessionID
@@ -161,8 +168,8 @@ func WithSessionID(sessionID string) Option {
 	}
 }
 
-// WithRequestIDGenerator sets the function used when a request has no ID.
-// The function can be called concurrently.
+// WithRequestIDGenerator sets the function used when neither Request.RequestID
+// nor X-Request-ID is present. The function can be called concurrently.
 func WithRequestIDGenerator(generator func() string) Option {
 	return func(config *clientConfig) error {
 		if generator == nil {
@@ -173,8 +180,8 @@ func WithRequestIDGenerator(generator func() string) Option {
 	}
 }
 
-// WithRetryPolicy sets the retry count and backoff for safe, repeatable
-// requests.
+// WithRetryPolicy sets the retry count and fixed backoff for repeatable GET,
+// HEAD, and OPTIONS requests. MaxAttempts includes the initial attempt.
 func WithRetryPolicy(policy RetryPolicy) Option {
 	return func(config *clientConfig) error {
 		if policy.MaxAttempts <= 0 {
@@ -188,7 +195,8 @@ func WithRetryPolicy(policy RetryPolicy) Option {
 	}
 }
 
-// WithVersionNegotiation controls automatic API version discovery and headers.
+// WithVersionNegotiation controls automatic API-version discovery and the
+// X-API-Sem-Ver request header. Enabled negotiation caches successful discovery.
 func WithVersionNegotiation(mode VersionNegotiation) Option {
 	return func(config *clientConfig) error {
 		switch mode {

@@ -14,20 +14,32 @@ import (
 	internalapi "github.com/lxdb/busylib-go/internal/api"
 )
 
-// Request describes one BUSY Bar API operation before validation and normalization.
+// Request describes one BUSY Bar API operation before validation and
+// normalization. Prepare copies Query and Header data needed for execution.
 type Request struct {
-	Method       string
-	Path         string
-	Query        url.Values
-	Header       http.Header
-	Body         Body
+	// Method is required and is normalized to upper case.
+	Method string
+	// Path is a relative firmware API path. Prepare adds the /api prefix when
+	// needed and rejects absolute URLs.
+	Path string
+	// Query contains URL query parameters.
+	Query url.Values
+	// Header contains caller headers. Authentication headers must be configured
+	// through client or transport options.
+	Header http.Header
+	// Body supplies request content and its replay policy.
+	Body Body
+	// ResponseMode defaults to ResponseModeJSON.
 	ResponseMode ResponseMode
-	RequestID    string
-	SessionID    string
+	// RequestID overrides generated correlation data when X-Request-ID is absent.
+	RequestID string
+	// SessionID overrides the client's default session ID for this request.
+	SessionID string
 }
 
-// PreparedRequest is an immutable normalized request returned by Prepare.
-// It is safe to execute more than once only when the request body is repeatable.
+// PreparedRequest is an immutable normalized request returned by Prepare. Its
+// accessors return values or copies. Repeated execution is safe only when its
+// body is repeatable.
 type PreparedRequest struct {
 	method       string
 	path         string
@@ -47,7 +59,7 @@ func (p *PreparedRequest) Path() string { return p.path }
 // URL returns a copy of the normalized target URL.
 func (p *PreparedRequest) URL() url.URL { return p.targetURL }
 
-// Header returns a copy of the prepared HTTP headers.
+// Header returns an independent copy of the prepared HTTP headers.
 func (p *PreparedRequest) Header() http.Header { return p.header.Clone() }
 
 // ResponseMode returns the validated response mode.
@@ -56,8 +68,9 @@ func (p *PreparedRequest) ResponseMode() ResponseMode { return p.responseMode }
 // RequestID returns the request correlation identifier.
 func (p *PreparedRequest) RequestID() string { return p.requestID }
 
-// Prepare validates a request and creates a reusable transport-ready value.
-// Each DoPrepared call receives its own copy of mutable request state.
+// Prepare validates and normalizes a request without sending it. Each
+// DoPrepared call receives its own copy of mutable request state. Prepare can
+// return ValidationError or an error from body preparation.
 func (c *Client) Prepare(request Request) (*PreparedRequest, error) {
 	method := strings.ToUpper(strings.TrimSpace(request.Method))
 	if method == "" {
@@ -131,8 +144,8 @@ func (c *Client) Prepare(request Request) (*PreparedRequest, error) {
 	}, nil
 }
 
-// Do validates, prepares, and executes one API request.
-// The response body is limited by the client's configured maximum size.
+// Do validates, prepares, and executes one API request. The context must not be
+// nil. The client's configured maximum size applies to every buffered response.
 func (c *Client) Do(ctx context.Context, request Request) (*Response, error) {
 	if ctx == nil {
 		return nil, validationError(request.Method, request.Path, "context must not be nil", nil)
@@ -158,9 +171,8 @@ func (c *Client) doStreamTo(ctx context.Context, request Request, writer io.Writ
 	return c.doPreparedTo(ctx, prepared, writer)
 }
 
-// DoPrepared executes a request created by Prepare.
-// A prepared request can be executed multiple times only when its body is
-// repeatable.
+// DoPrepared executes a request created by Prepare. The context and prepared
+// request must not be nil. Repeated execution requires a repeatable body.
 func (c *Client) DoPrepared(ctx context.Context, prepared *PreparedRequest) (*Response, error) {
 	ctx, cancel, execution, err := c.preparedExecution(ctx, prepared)
 	if cancel != nil {

@@ -10,11 +10,13 @@ import (
 
 const maxErrorExcerpt = 256
 
-// ErrResponseTooLarge reports a response that exceeds the configured buffer limit.
+// ErrResponseTooLarge reports a response that exceeds the configured buffer
+// limit. Match it with errors.Is through the returned RequestError.
 var ErrResponseTooLarge = errors.New("response exceeds the configured buffer limit")
 
-// APIError reports a non-success response returned by the device API.
-// Payload preserves a decoded JSON error body when one is available.
+// APIError reports a non-success response returned by the device API. Payload
+// preserves a decoded JSON error object when available. Excerpt is bounded and
+// whitespace-normalized but can still contain sensitive device data.
 type APIError struct {
 	Method      string
 	Path        string
@@ -38,7 +40,8 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("%s %s failed: %s (status=%d)", e.Method, e.Path, message, e.StatusCode)
 }
 
-// RequestError reports a transport failure after all permitted attempts.
+// RequestError reports a transport or response-body failure after all permitted
+// attempts. Unwrap exposes the underlying cause to errors.Is and errors.As.
 type RequestError struct {
 	Method    string
 	Path      string
@@ -61,6 +64,7 @@ func (e *RequestError) Unwrap() error {
 }
 
 // ProtocolError reports a response that does not match the expected format.
+// Excerpt is bounded but can still contain sensitive device data.
 type ProtocolError struct {
 	Method    string
 	Path      string

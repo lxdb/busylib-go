@@ -194,6 +194,7 @@ func (s SettingsService) HTTPAccess(ctx context.Context) (HTTPAccessInfo, error)
 }
 
 // SetHTTPAccess changes the local HTTP access mode and optional numeric key.
+// The change can invalidate the credentials used by subsequent requests.
 func (s SettingsService) SetHTTPAccess(ctx context.Context, mode HTTPAccessMode, key string) error {
 	if err := validateHTTPAccess(mode, key); err != nil {
 		return validationError(http.MethodPost, "/api/access", err.Error(), err)
@@ -258,7 +259,8 @@ func (s DisplayService) Clear(ctx context.Context, applicationName string) error
 	return s.client.doSuccess(ctx, http.MethodDelete, "/api/display/draw", query, nil)
 }
 
-// Screen returns the decoded pixels of the selected display.
+// Screen returns the uncompressed pixels of the selected display. Pass the
+// result to frame.FromHTTP when metadata or image conversion is required.
 func (s DisplayService) Screen(ctx context.Context, display DisplayTarget) ([]byte, error) {
 	if err := validateScreenDisplay(display); err != nil {
 		return nil, validationError(http.MethodGet, "/api/screen", err.Error(), err)
@@ -357,7 +359,8 @@ func (s AssetsService) UploadFile(ctx context.Context, applicationName, file, lo
 	})
 }
 
-// DeleteApplicationAssets removes all assets owned by one application.
+// DeleteApplicationAssets permanently removes all assets owned by one
+// application.
 func (s AssetsService) DeleteApplicationAssets(ctx context.Context, applicationName string) error {
 	if err := validateAssetParameter("application_name", applicationName); err != nil {
 		return validationError(http.MethodDelete, "/api/assets/upload", err.Error(), err)
@@ -421,7 +424,7 @@ func (s StorageService) List(ctx context.Context, path string) (StorageList, err
 	return out, err
 }
 
-// Remove deletes a device file or directory.
+// Remove permanently deletes a device file or directory.
 func (s StorageService) Remove(ctx context.Context, path string) error {
 	if err := validateStoragePath("path", path); err != nil {
 		return validationError(http.MethodDelete, "/api/storage/remove", err.Error(), err)
@@ -462,7 +465,8 @@ func (s BusyService) Snapshot(ctx context.Context) (BusySnapshot, error) {
 	return out, err
 }
 
-// SetSnapshot validates and replaces the current busy-state snapshot.
+// SetSnapshot validates and replaces the complete current busy-state snapshot.
+// Read Snapshot first when fields not owned by the caller must be preserved.
 func (s BusyService) SetSnapshot(ctx context.Context, snapshot BusySnapshot) error {
 	if err := snapshot.Validate(); err != nil {
 		return validationError(http.MethodPut, "/api/busy/snapshot", err.Error(), err)
@@ -480,7 +484,7 @@ func (s BusyService) Profile(ctx context.Context, slot BusyProfileSlot) (BusyPro
 	return out, err
 }
 
-// SetProfile validates and replaces the saved busy profile in slot.
+// SetProfile validates and replaces the complete saved busy profile in slot.
 func (s BusyService) SetProfile(ctx context.Context, slot BusyProfileSlot, profile BusyProfile) error {
 	if err := validateBusyProfileSlot(slot); err != nil {
 		return validationError(http.MethodPut, "/api/busy/profiles/{slot}", err.Error(), err)
@@ -505,7 +509,8 @@ func (s AccountService) Info(ctx context.Context) (AccountInfo, error) {
 	return out, err
 }
 
-// Link starts account linking and returns the user authorization details.
+// Link starts account linking and returns temporary user authorization details.
+// It is unavailable through remote.Client.Device.
 func (s AccountService) Link(ctx context.Context) (AccountLink, error) {
 	var out AccountLink
 	err := s.client.doJSON(ctx, http.MethodPost, "/api/account/link", nil, nil, &out)
@@ -520,6 +525,7 @@ func (s AccountService) Backend(ctx context.Context) (AccountBackend, error) {
 }
 
 // SetBackend validates and replaces the remote account backend configuration.
+// It is unavailable through remote.Client.Device.
 func (s AccountService) SetBackend(ctx context.Context, backend AccountBackend) error {
 	if err := backend.Validate(); err != nil {
 		return validationError(http.MethodPut, "/api/account/backend", err.Error(), err)
@@ -527,7 +533,8 @@ func (s AccountService) SetBackend(ctx context.Context, backend AccountBackend) 
 	return s.client.doSuccess(ctx, http.MethodPut, "/api/account/backend", nil, JSONBody(backend))
 }
 
-// Unlink disconnects the device from its remote account.
+// Unlink disconnects the device from its remote account. It is unavailable
+// through remote.Client.Device.
 func (s AccountService) Unlink(ctx context.Context) error {
 	return s.client.doSuccess(ctx, http.MethodDelete, "/api/account", nil, nil)
 }
@@ -561,14 +568,17 @@ func (s WiFiService) Status(ctx context.Context) (WiFiStatus, error) {
 	return out, err
 }
 
-// Networks scans for available Wi-Fi networks.
+// Networks scans for available Wi-Fi networks. It is unavailable through
+// remote.Client.Device.
 func (s WiFiService) Networks(ctx context.Context) (WiFiNetworkList, error) {
 	var out WiFiNetworkList
 	err := s.client.doJSON(ctx, http.MethodGet, "/api/wifi/networks", nil, nil, &out)
 	return out, err
 }
 
-// Connect validates the network settings and starts a Wi-Fi connection.
+// Connect validates the network settings and starts a Wi-Fi connection. It is
+// unavailable through remote.Client.Device and can replace the caller's active
+// network path.
 func (s WiFiService) Connect(ctx context.Context, request WiFiConnectRequest) error {
 	if err := request.Validate(); err != nil {
 		return validationError(http.MethodPost, "/api/wifi/connect", err.Error(), err)
@@ -576,7 +586,8 @@ func (s WiFiService) Connect(ctx context.Context, request WiFiConnectRequest) er
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/wifi/connect", nil, JSONBody(request))
 }
 
-// Disconnect stops the current Wi-Fi connection.
+// Disconnect stops the current Wi-Fi connection. It is unavailable through
+// remote.Client.Device and can remove the caller's active network path.
 func (s WiFiService) Disconnect(ctx context.Context) error {
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/wifi/disconnect", nil, nil)
 }
@@ -603,7 +614,7 @@ func (s SmartHomeService) StartPairing(ctx context.Context) (SmartHomePairingPay
 	return out, err
 }
 
-// ForgetPairings removes all saved smart-home pairings.
+// ForgetPairings permanently removes all saved smart-home pairings.
 func (s SmartHomeService) ForgetPairings(ctx context.Context) error {
 	return s.client.doSuccess(ctx, http.MethodDelete, "/api/smart_home/pairing", nil, nil)
 }
@@ -615,7 +626,8 @@ func (s SmartHomeService) SwitchState(ctx context.Context) (SmartHomeSwitchState
 	return out, err
 }
 
-// SetSwitchState validates and changes the smart-home switch configuration.
+// SetSwitchState validates and changes the supplied smart-home switch fields.
+// Nil pointer fields preserve their current values.
 func (s SmartHomeService) SetSwitchState(ctx context.Context, update SmartHomeSwitchUpdate) error {
 	if err := update.Validate(); err != nil {
 		return validationError(http.MethodPost, "/api/smart_home/switch", err.Error(), err)
@@ -660,7 +672,8 @@ func (s TimeService) Timezones(ctx context.Context) (TimezoneListResponse, error
 	return out, err
 }
 
-// UploadPackage uploads a firmware package from body.
+// UploadPackage uploads a firmware package from body. It is unavailable through
+// remote.Client.Device.
 func (s UpdateService) UploadPackage(ctx context.Context, body Body) error {
 	if body == nil {
 		return validationError(http.MethodPost, "/api/update", "firmware update body must not be nil", nil)
@@ -690,7 +703,8 @@ func (s UpdateService) Changelog(ctx context.Context, version string) (UpdateCha
 	return out, err
 }
 
-// Install starts downloading and installing a firmware version.
+// Install starts downloading and installing a firmware version. A successful
+// response means the device accepted the operation; use Status to observe it.
 func (s UpdateService) Install(ctx context.Context, version string) error {
 	if err := validateUpdateVersion(version); err != nil {
 		return validationError(http.MethodPost, "/api/update/install", err.Error(), err)
@@ -710,7 +724,8 @@ func (s UpdateService) AutoUpdate(ctx context.Context) (AutoUpdateSettings, erro
 	return out, err
 }
 
-// SetAutoUpdate validates and applies automatic-update settings.
+// SetAutoUpdate validates and applies automatic-update settings. A nil
+// IsEnabled field preserves the current enabled state.
 func (s UpdateService) SetAutoUpdate(ctx context.Context, settings AutoUpdateSettings) error {
 	if err := settings.Validate(); err != nil {
 		return validationError(http.MethodPost, "/api/update/autoupdate", err.Error(), err)

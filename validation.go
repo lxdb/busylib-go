@@ -45,7 +45,8 @@ type ValidationWarning struct {
 	Message string
 }
 
-// NormalizeColor validates a BUSY Bar color and returns canonical #RRGGBBAA.
+// NormalizeColor accepts exactly #RRGGBBAA and returns the value with uppercase
+// hexadecimal digits.
 func NormalizeColor(value string) (string, error) {
 	if !colorPattern.MatchString(value) {
 		return "", fmt.Errorf("color must use #RRGGBBAA")
@@ -53,7 +54,8 @@ func NormalizeColor(value string) (string, error) {
 	return strings.ToUpper(value), nil
 }
 
-// Validate reports whether a display request meets the device API contract.
+// Validate reports whether a display request meets the locally recorded device
+// API contract. It does not contact the device.
 func (request DisplayElements) Validate() error {
 	if request.Priority < 0 || request.Priority > 100 {
 		return errors.New("priority must be omitted or between 1 and 100")
@@ -181,7 +183,8 @@ func (request WiFiConnectRequest) Validate() error {
 	return nil
 }
 
-// Validate reports whether remote account backend settings are complete and safe.
+// Validate reports whether remote account backend settings are syntactically
+// valid for the device API.
 func (backend AccountBackend) Validate() error {
 	if strings.TrimSpace(backend.ServerURL) == "" {
 		return errors.New("server_url must not be empty")

@@ -9,14 +9,15 @@ import (
 	"sync"
 )
 
-// Body provides request content and its replay rules to Client.
-// Use the body constructors in this package instead of implementing Body.
+// Body provides request content, media type, length, and replay rules to Client.
+// Its implementation is sealed; create values with the body constructors in
+// this package.
 type Body interface {
 	prepareBody() (*preparedBody, error)
 }
 
-// ProgressFunc reports bytes read from a request body for the current attempt.
-// total is -1 when the body length is unknown. A retry starts written at zero.
+// ProgressFunc reports bytes read from a request body during one attempt. The
+// total is -1 when the length is unknown. Each retry starts written at zero.
 type ProgressFunc func(written, total int64)
 
 type preparedBody struct {
@@ -26,15 +27,13 @@ type preparedBody struct {
 	open          func() (io.ReadCloser, error)
 }
 
-// JSONBody encodes value as an application/json request body.
-// JSON bodies are repeatable and can be replayed for transport retries and
-// API-semver compatibility retries.
+// JSONBody encodes value during Prepare as a repeatable application/json body.
+// Encoding failures are returned by Prepare.
 func JSONBody(value any) Body {
 	return jsonBody{value: value}
 }
 
-// BytesBody sends data with contentType.
-// The bytes are copied, so the body is repeatable.
+// BytesBody copies data and sends it as a repeatable body with contentType.
 func BytesBody(data []byte, contentType string) Body {
 	copied := append([]byte(nil), data...)
 	return bytesBody{
@@ -43,10 +42,9 @@ func BytesBody(data []byte, contentType string) Body {
 	}
 }
 
-// ReaderBody sends reader as a single-use request body.
-// It is never replayed for retries; use RepeatableBody or BytesBody when an
-// upload must be retryable. Client closes reader after the request attempt when
-// it also implements io.ReadCloser.
+// ReaderBody sends reader once with contentType. It is never replayed for a
+// transport or compatibility retry. Client closes reader after the attempt when
+// it implements io.ReadCloser.
 func ReaderBody(reader io.Reader, contentType string) Body {
 	return &readerBody{
 		reader:      reader,
@@ -54,9 +52,9 @@ func ReaderBody(reader io.Reader, contentType string) Body {
 	}
 }
 
-// RepeatableBody sends a body that can be opened again for each attempt.
-// The opener must return a fresh reader every time it is called. Client closes
-// every reader returned by the opener after its request attempt.
+// RepeatableBody calls open for each attempt. The function must return a new
+// reader each time. Client closes every returned reader after that attempt.
+// Use -1 for contentLength when the length is unknown.
 func RepeatableBody(contentType string, contentLength int64, open func() (io.ReadCloser, error)) Body {
 	return repeatableBody{
 		contentType:   contentType,
@@ -65,7 +63,8 @@ func RepeatableBody(contentType string, contentLength int64, open func() (io.Rea
 	}
 }
 
-// FileBody sends a local file as a repeatable request body.
+// FileBody opens path for each execution or retry and sends it as a repeatable
+// body with contentType. Prepare rejects an empty path or a directory.
 func FileBody(path, contentType string) Body {
 	return fileBody{
 		path:        path,
@@ -73,8 +72,8 @@ func FileBody(path, contentType string) Body {
 	}
 }
 
-// ProgressBody reports upload progress while preserving the wrapped body's
-// repeatability and content length.
+// ProgressBody reports reads through onProgress while preserving the wrapped
+// body's content type, length, and repeatability. A nil callback is a no-op.
 func ProgressBody(body Body, onProgress ProgressFunc) Body {
 	return progressBody{
 		body:       body,
