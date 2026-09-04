@@ -39,7 +39,7 @@ type config struct {
 	maxOutputBytes int64
 }
 
-// WithMaxOutputBytes changes the PCM output limit.
+// WithMaxOutputBytes changes the positive PCM output limit.
 func WithMaxOutputBytes(maximum int64) Option {
 	return func(config *config) error {
 		if maximum <= 0 {
@@ -50,10 +50,11 @@ func WithMaxOutputBytes(maximum int64) Option {
 	}
 }
 
-// Option configures audio conversion.
+// Option configures audio conversion. Convert ignores nil options.
 type Option func(*config) error
 
-// WithFFmpegPath selects the ffmpeg executable used for compressed inputs.
+// WithFFmpegPath selects the ffmpeg executable used for compressed inputs. The
+// default is "ffmpeg" from the process environment.
 func WithFFmpegPath(path string) Option {
 	return func(config *config) error {
 		if strings.TrimSpace(path) == "" {
@@ -110,7 +111,7 @@ func Convert(ctx context.Context, source io.Reader, filename string, options ...
 	return runFFmpeg(ctx, source, extension, config)
 }
 
-// ConvertFile converts the contents of path using its extension.
+// ConvertFile opens, closes, and converts path using its extension.
 func ConvertFile(ctx context.Context, path string, options ...Option) (Result, error) {
 	file, err := os.Open(path)
 	if err != nil {

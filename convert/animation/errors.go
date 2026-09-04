@@ -25,7 +25,9 @@ var (
 	ErrOutputTooLarge = errors.New("animation output exceeds the configured limit")
 )
 
-// ConversionError describes a safe animation conversion failure.
+// ConversionError describes an animation conversion failure without retaining
+// frame data. Use errors.As to inspect it and errors.Is to inspect the wrapped
+// cause.
 type ConversionError struct {
 	Operation  string
 	FrameIndex int

@@ -23,7 +23,7 @@ const (
 )
 
 // Frame preserves the status metadata and raw, possibly encoded, pixel data
-// emitted by the BUSY Bar.
+// emitted by the BUSY Bar. Constructors copy Raw from their input.
 type Frame struct {
 	Screen      framepb.Screen
 	Width       uint32
@@ -101,7 +101,8 @@ func (f Frame) Pixels() ([]byte, error) {
 	return f.pixels("pixels")
 }
 
-// RGBA converts the frame into an opaque standard-library image.
+// RGBA converts the frame into a new opaque standard-library image. Firmware
+// RGB888 bytes are interpreted in B, G, R order.
 func (f Frame) RGBA() (*image.RGBA, error) {
 	pixels, err := f.pixels("rgba")
 	if err != nil {

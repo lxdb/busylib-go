@@ -30,7 +30,9 @@ const (
 // BUSY Bar stores each pixel in B, G, R byte order.
 type RGB888Frame struct {
 	PixelsBGR []byte
-	Duration  uint8
+	// Duration is the number of display frames to retain this image. Zero means
+	// one display frame.
+	Duration uint8
 }
 
 // RGB888Config describes the dimensions and playback rate of raw frames.
@@ -63,7 +65,7 @@ type animationLayout struct {
 
 type frameLoader func(index int, pixels []byte) (duration uint8, entry string, err error)
 
-// Option configures animation conversion limits.
+// Option configures animation conversion limits. Encoders ignore nil options.
 type Option func(*config) error
 
 // WithMaxInputBytes changes the ZIP input and relevant expanded-entry limit.
@@ -89,7 +91,8 @@ func WithMaxOutputBytes(maximum int64) Option {
 }
 
 // EncodeRGB888 packages BGR-ordered RGB888 frames as a firmware-native
-// bicycle0 animation.
+// bicycle0 animation. A zero FPS uses DefaultFPS. The result does not retain
+// the input slices.
 func EncodeRGB888(frames []RGB888Frame, format RGB888Config, options ...Option) (Result, error) {
 	conversionConfig, err := newConfig(options)
 	if err != nil {

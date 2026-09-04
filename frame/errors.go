@@ -21,7 +21,8 @@ var (
 )
 
 // Error describes a frame construction or conversion failure while preserving
-// the raw protocol values that caused it.
+// the raw protocol values that caused it. Use errors.As to inspect it and
+// errors.Is to inspect the wrapped cause.
 type Error struct {
 	Operation   string
 	Screen      framepb.Screen

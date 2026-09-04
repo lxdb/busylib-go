@@ -20,7 +20,8 @@ var (
 	ErrSourceImageTooLarge = errors.New("source image exceeds the configured pixel limit")
 )
 
-// ConversionError describes an image decode or preparation failure.
+// ConversionError describes an image decode or preparation failure. Use
+// errors.As to inspect it and errors.Is to inspect the wrapped cause.
 type ConversionError struct {
 	Operation string
 	Format    string

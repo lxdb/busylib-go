@@ -29,10 +29,10 @@ type imageConfig struct {
 	maxSourcePixels int64
 }
 
-// Option configures image conversion.
+// Option configures image conversion. Image ignores nil options.
 type Option func(*imageConfig) error
 
-// WithMaxInputBytes changes the encoded image input limit.
+// WithMaxInputBytes changes the positive encoded-image input limit.
 func WithMaxInputBytes(maximum int64) Option {
 	return func(config *imageConfig) error {
 		if maximum <= 0 {
@@ -43,7 +43,7 @@ func WithMaxInputBytes(maximum int64) Option {
 	}
 }
 
-// WithMaxSourcePixels changes the decoded source pixel limit.
+// WithMaxSourcePixels changes the positive decoded-source pixel limit.
 func WithMaxSourcePixels(maximum int64) Option {
 	return func(config *imageConfig) error {
 		if maximum <= 0 {
@@ -54,7 +54,8 @@ func WithMaxSourcePixels(maximum int64) Option {
 	}
 }
 
-// ImageResult is an owned PNG payload and its prepared dimensions.
+// ImageResult owns a PNG payload and its prepared dimensions. SourceFormat is
+// the format detected in the input.
 type ImageResult struct {
 	Data         []byte
 	Width        int
@@ -120,7 +121,7 @@ func Image(source io.Reader, target busylib.DisplayTarget, options ...Option) (I
 	}, nil
 }
 
-// ImageFile prepares an image read from path.
+// ImageFile opens, closes, and prepares an image read from path.
 func ImageFile(path string, target busylib.DisplayTarget, options ...Option) (ImageResult, error) {
 	file, err := os.Open(path)
 	if err != nil {

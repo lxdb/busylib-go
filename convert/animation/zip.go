@@ -17,8 +17,10 @@ import (
 	"strings"
 )
 
-// ConvertZIP converts a firmware-style ZIP containing meta.json and numbered
-// PNG frames into a device-native animation. It does not close source.
+// ConvertZIP converts a firmware-style ZIP containing <name>/meta.json and
+// consecutively numbered <name>/frame_N.png files into a device-native
+// animation. filename supplies <name> and must end in .zip. ConvertZIP does not
+// close source.
 func ConvertZIP(source io.Reader, filename string, options ...Option) (Result, error) {
 	conversionConfig, err := newConfig(options)
 	if err != nil {
@@ -166,7 +168,8 @@ func ConvertZIP(source io.Reader, filename string, options ...Option) (Result, e
 	)
 }
 
-// ConvertZIPFile converts the firmware-style animation ZIP at path.
+// ConvertZIPFile opens, closes, and converts the firmware-style animation ZIP
+// at path.
 func ConvertZIPFile(path string, options ...Option) (Result, error) {
 	file, err := os.Open(path)
 	if err != nil {

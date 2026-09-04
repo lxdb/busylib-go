@@ -15,7 +15,8 @@ type ImageFrame struct {
 }
 
 // EncodeImages converts equal-sized images to firmware BGR byte order and
-// packages them as a device-native animation. Images are never resized.
+// packages them as a device-native animation. Images are never resized. A zero
+// FPS uses DefaultFPS.
 func EncodeImages(frames []ImageFrame, fps int, options ...Option) (Result, error) {
 	if len(frames) == 0 {
 		return Result{}, conversionError("validate", -1, "", ErrNoFrames)

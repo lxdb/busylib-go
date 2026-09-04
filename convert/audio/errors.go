@@ -16,7 +16,9 @@ var (
 	ErrOutputTooLarge = errors.New("audio output exceeds the configured limit")
 )
 
-// ConversionError describes audio validation or external-tool failure.
+// ConversionError describes audio validation or external-tool failure. Use
+// errors.As to inspect it and errors.Is to inspect the wrapped cause. Stderr is
+// bounded but can contain tool-provided path or media details.
 type ConversionError struct {
 	Operation   string
 	InputFormat string

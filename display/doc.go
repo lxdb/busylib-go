@@ -1,3 +1,3 @@
-// Package display defines physical BUSY Bar display targets shared by the
-// HTTP client and frame decoder.
+// Package display defines the front and back physical BUSY Bar targets shared
+// by the HTTP client, media converters, and frame decoder.
 package display
