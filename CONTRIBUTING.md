@@ -4,7 +4,7 @@ Contributions should be focused, testable, and compatible with the repository’
 
 ## Before you start
 
-Open an issue before a large API or protocol change. Do not include secrets, device tokens, broker credentials, or private firmware data. Check [Compatibility](docs/compatibility.md) before changing a toolchain, generated artifact, firmware contract, platform assumption, or safety limit.
+Open an issue before a large API or protocol change. Do not include secrets, device tokens, broker credentials, or private firmware data. Check [Compatibility](docs/reference/compatibility.md) before changing a toolchain, generated artifact, firmware contract, platform assumption, or safety limit.
 
 ## Submit a change
 
@@ -15,7 +15,7 @@ Open an issue before a large API or protocol change. Do not include secrets, dev
 5. Use a Conventional Commit pull-request title.
 6. Describe risks, verification evidence, and any check that was not run.
 
-Keep unrelated formatting, generated output, and cleanup out of the change. Follow [Development](docs/development.md) for module-specific, generated-code, and device-test commands.
+Keep unrelated formatting, generated output, and cleanup out of the change. Follow [Development](docs/maintainers/development.md) for module-specific and generated-code commands, and [Testing](docs/maintainers/testing.md) for verification.
 
 ## Commit messages
 
