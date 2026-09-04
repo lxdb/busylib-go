@@ -17,6 +17,8 @@ var remoteBlockedOperations = map[string]struct{}{
 	"GET /api/wifi/networks":    {},
 }
 
+// IsRemoteBlockedOperation reports whether firmware rejects the operation over
+// the MQTT HTTP proxy.
 func IsRemoteBlockedOperation(method, path string) bool {
 	if path != "/api/" {
 		path = strings.TrimSuffix(path, "/")
@@ -25,6 +27,8 @@ func IsRemoteBlockedOperation(method, path string) bool {
 	return ok
 }
 
+// RemoteBlockedOperations returns the firmware blocklist in path and method
+// order.
 func RemoteBlockedOperations() []string {
 	operations := make([]string, 0, len(remoteBlockedOperations))
 	for operation := range remoteBlockedOperations {

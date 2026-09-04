@@ -10,11 +10,16 @@ import (
 )
 
 const (
-	ExpectedAPIVersion         = "25.0.0"
-	ExpectedOperationCount     = 68
+	// ExpectedAPIVersion is the audited firmware API version.
+	ExpectedAPIVersion = "25.0.0"
+	// ExpectedOperationCount is the total number of audited HTTP operations.
+	ExpectedOperationCount = 68
+	// ExpectedSyncOperationCount is the number of synchronous HTTP operations.
 	ExpectedSyncOperationCount = 67
-	StreamPhase                = 6
-	ExpectedStreamUpdateKinds  = 15
+	// StreamPhase is the firmware owner phase for the status stream.
+	StreamPhase = 6
+	// ExpectedStreamUpdateKinds is the audited number of typed stream updates.
+	ExpectedStreamUpdateKinds = 15
 )
 
 // Contract is an independently recorded audit of the BUSY Bar firmware HTTP
@@ -35,6 +40,7 @@ type Contract struct {
 	Operations     []Operation           `json:"operations"`
 }
 
+// StatusStreamContract records the audited WebSocket stream protocol.
 type StatusStreamContract struct {
 	Path                      string            `json:"path"`
 	AccessKeyQuery            string            `json:"accessKeyQuery"`
@@ -53,6 +59,7 @@ type StatusStreamContract struct {
 	SourceReferences          []SourceReference `json:"sourceReferences"`
 }
 
+// FrameContract records the audited HTTP and protobuf frame formats.
 type FrameContract struct {
 	HTTPPath             string               `json:"httpPath"`
 	HTTPEncoding         string               `json:"httpEncoding"`
@@ -64,6 +71,7 @@ type FrameContract struct {
 	SourceReferences     []SourceReference    `json:"sourceReferences"`
 }
 
+// FrameSurfaceContract records one physical display's pixel layout.
 type FrameSurfaceContract struct {
 	Screen        int    `json:"screen"`
 	Width         int    `json:"width"`
@@ -74,23 +82,27 @@ type FrameSurfaceContract struct {
 	RLEBlockBytes int    `json:"rleBlockBytes"`
 }
 
+// SnapshotContract records the HTTP and stream sources used by snapshots.
 type SnapshotContract struct {
 	HTTP             []SnapshotHTTPContract `json:"http"`
 	StateUpdateKinds []string               `json:"stateUpdateKinds"`
 	SourceReferences []SourceReference      `json:"sourceReferences"`
 }
 
+// SnapshotHTTPContract records one independently collected snapshot section.
 type SnapshotHTTPContract struct {
 	Section       string   `json:"section"`
 	Path          string   `json:"path"`
 	CanonicalKeys []string `json:"canonicalKeys"`
 }
 
+// OptionalToolsContract records the firmware contracts behind optional tools.
 type OptionalToolsContract struct {
 	CLI   CLIContract   `json:"cli"`
 	Media MediaContract `json:"media"`
 }
 
+// CLIContract records the audited USB-network CLI protocol.
 type CLIContract struct {
 	DefaultAddress   string               `json:"defaultAddress"`
 	Port             int                  `json:"port"`
@@ -101,6 +113,7 @@ type CLIContract struct {
 	SourceReferences []SourceReference    `json:"sourceReferences"`
 }
 
+// CLICommandContract records one curated firmware CLI command.
 type CLICommandContract struct {
 	Name         string `json:"name"`
 	Mode         string `json:"mode"`
@@ -108,12 +121,14 @@ type CLICommandContract struct {
 	SourceSymbol string `json:"sourceSymbol"`
 }
 
+// MediaContract records the firmware-compatible media formats.
 type MediaContract struct {
 	Image            ImageConversionContract `json:"image"`
 	Audio            AudioConversionContract `json:"audio"`
 	SourceReferences []SourceReference       `json:"sourceReferences"`
 }
 
+// ImageConversionContract records supported image output dimensions and format.
 type ImageConversionContract struct {
 	OutputFormat   string `json:"outputFormat"`
 	Decoder        string `json:"decoder"`
@@ -123,6 +138,7 @@ type ImageConversionContract struct {
 	BackMaxHeight  int    `json:"backMaxHeight"`
 }
 
+// AudioConversionContract records the required device audio format.
 type AudioConversionContract struct {
 	Header          string `json:"header"`
 	Channels        int    `json:"channels"`
@@ -132,6 +148,7 @@ type AudioConversionContract struct {
 	OutputExtension string `json:"outputExtension"`
 }
 
+// RemoteContract records the audited MQTT HTTP and stream protocols.
 type RemoteContract struct {
 	MQTTVersion      int                  `json:"mqttVersion"`
 	APIVersion       string               `json:"apiVersion"`
@@ -143,6 +160,7 @@ type RemoteContract struct {
 	SourceReferences []SourceReference    `json:"sourceReferences"`
 }
 
+// RemoteHTTPContract records the MQTT HTTP request-response protocol.
 type RemoteHTTPContract struct {
 	RequestTopic            string   `json:"requestTopic"`
 	LocalHost               string   `json:"localHost"`
@@ -157,6 +175,7 @@ type RemoteHTTPContract struct {
 	BlockedOperations       []string `json:"blockedOperations"`
 }
 
+// RemoteStreamContract records the MQTT status-stream protocol.
 type RemoteStreamContract struct {
 	RequestTopic                   string `json:"requestTopic"`
 	RequestQoS                     int    `json:"requestQos"`
@@ -172,11 +191,13 @@ type RemoteStreamContract struct {
 	MessageLimitIntervalSecondsKey string `json:"messageLimitIntervalSecondsKey"`
 }
 
+// SourceReference identifies the firmware source behind one contract fact.
 type SourceReference struct {
 	SourceFile   string `json:"sourceFile"`
 	SourceSymbol string `json:"sourceSymbol"`
 }
 
+// Operation records one firmware HTTP method, path, owner, and source location.
 type Operation struct {
 	Method       string `json:"method"`
 	Path         string `json:"path"`
@@ -185,10 +206,12 @@ type Operation struct {
 	SourceSymbol string `json:"sourceSymbol"`
 }
 
+// ID returns the operation as an uppercase method followed by its path.
 func (o Operation) ID() string {
 	return strings.ToUpper(o.Method) + " " + o.Path
 }
 
+// LoadContractFile reads, decodes, and validates a recorded contract.
 func LoadContractFile(path string) (Contract, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -205,6 +228,7 @@ func LoadContractFile(path string) (Contract, error) {
 	return contract, nil
 }
 
+// Validate checks the complete recorded contract against audited invariants.
 func (c Contract) Validate() error {
 	if c.Repository == "" || c.Branch == "" || c.FirmwareCommit == "" || c.ProtobufCommit == "" {
 		return fmt.Errorf("firmware provenance is incomplete")
@@ -265,6 +289,7 @@ func (c Contract) Validate() error {
 	return nil
 }
 
+// Validate checks the recorded status-stream contract.
 func (c StatusStreamContract) Validate() error {
 	if c.Path != "/api/status/ws" || c.AccessKeyQuery != "x-api-token" || c.APISemVerQuery != "x-api-sem-ver" {
 		return fmt.Errorf("status stream address or query contract is invalid")
@@ -295,6 +320,7 @@ func (c StatusStreamContract) Validate() error {
 	return nil
 }
 
+// Validate checks the recorded frame contract.
 func (c FrameContract) Validate() error {
 	if c.HTTPPath != "/api/screen" || c.HTTPEncoding != "base64" || c.MaxPayloadBytes != 16_384 {
 		return fmt.Errorf("frame HTTP path or payload limit is invalid")
@@ -337,6 +363,7 @@ func (c FrameContract) Validate() error {
 	return nil
 }
 
+// Validate checks the recorded snapshot contract.
 func (c SnapshotContract) Validate() error {
 	wantHTTP := []SnapshotHTTPContract{
 		{Section: "name", Path: "/api/name", CanonicalKeys: []string{"name"}},
@@ -391,6 +418,7 @@ func (c SnapshotContract) Validate() error {
 	return nil
 }
 
+// Validate checks all recorded optional-tool contracts.
 func (c OptionalToolsContract) Validate() error {
 	if err := c.CLI.Validate(); err != nil {
 		return err
@@ -398,6 +426,7 @@ func (c OptionalToolsContract) Validate() error {
 	return c.Media.Validate()
 }
 
+// Validate checks the recorded remote MQTT contract.
 func (c RemoteContract) Validate() error {
 	if c.MQTTVersion != 5 || c.APIVersion != "v1" || c.TopicPattern != "sessions/{session_id}/{direction}/v1/{topic}" ||
 		c.DownDirection != "down" || c.UpDirection != "up" {
@@ -432,6 +461,7 @@ func (c RemoteContract) Validate() error {
 	return validateSourceReferences("remote", c.SourceReferences)
 }
 
+// Validate checks the recorded USB CLI contract.
 func (c CLIContract) Validate() error {
 	if c.DefaultAddress != "10.0.4.20" || c.Port != 23 || c.Prompt != ">: " || c.InterruptByte != 3 {
 		return fmt.Errorf("optional CLI transport contract is invalid")
@@ -478,6 +508,7 @@ func (c CLIContract) Validate() error {
 	return validateSourceReferences("optional CLI", c.SourceReferences)
 }
 
+// Validate checks the recorded image and audio contracts.
 func (c MediaContract) Validate() error {
 	wantImage := ImageConversionContract{
 		OutputFormat:   "PNG",
@@ -516,6 +547,7 @@ func validateSourceReferences(section string, references []SourceReference) erro
 	return nil
 }
 
+// Operation returns the operation with id, where id is "METHOD /path".
 func (c Contract) Operation(id string) (Operation, bool) {
 	for _, operation := range c.Operations {
 		if operation.ID() == id {
@@ -525,6 +557,7 @@ func (c Contract) Operation(id string) (Operation, bool) {
 	return Operation{}, false
 }
 
+// OperationIDs returns all operation IDs in lexical order.
 func (c Contract) OperationIDs() []string {
 	ids := make([]string, 0, len(c.Operations))
 	for _, operation := range c.Operations {
