@@ -1,102 +1,115 @@
 # Getting started
 
-This guide connects to a BUSY Bar on the local network, reads its status, and explains the error and upload contracts that callers must handle.
+This guide installs the main module, creates a local client, and verifies that the device API responds.
+
+## Requirements
+
+- Use a Go version supported by the root module. Read [`go.mod`](../go.mod) for the exact minimum version.
+- Connect the BUSY Bar through USB networking or another reachable local-network address.
+- Use an access key if the device HTTP API requires one.
+
+## Install the module
+
+```sh
+go get github.com/lxdb/busylib-go@latest
+```
 
 ## Create a client
 
+`NewClient()` uses `busylib.DefaultLocalBaseURL`, which is the USB-network endpoint `http://10.0.4.20`.
+
 ```go
-// NewClient defaults to the BUSY Bar USB-network endpoint:
-// http://10.0.4.20
 client, err := busylib.NewClient()
 if err != nil {
-    return err
+	return err
 }
+```
 
+To use another address, pass a hostname, an IP address, or a complete HTTP or HTTPS URL:
+
+```go
+client, err := busylib.NewClient(
+	busylib.WithBaseURL("busybar.local"),
+)
+```
+
+A hostname or IP address without a scheme uses `http`. The client discards a path in the base URL and stores only the endpoint origin.
+
+If the device requires a local access key, configure it when you create the client:
+
+```go
+client, err := busylib.NewClient(
+	busylib.WithBaseURL("busybar.local"),
+	busylib.WithLocalAccessKey(accessKey),
+)
+```
+
+Do not log the access key or include it in an error message.
+
+## Make the first request
+
+Give each operation a deadline. The caller's deadline can end the request before the client timeout.
+
+```go
 ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 defer cancel()
 
 status, err := client.System().Status(ctx)
 if err != nil {
-    return err
+	return err
 }
 
 log.Printf("firmware version: %s", status.Firmware.Version)
 ```
 
-`NewClient()` uses `busylib.DefaultLocalBaseURL`, the BUSY Bar USB-network endpoint. To connect through another local-network address, pass `busylib.WithBaseURL("busybar.local")` or a complete HTTP or HTTPS URL. A missing scheme defaults to `http`; any path supplied in the base URL is discarded because the client stores only the endpoint origin.
+Success means the call returns a `busylib.Status` value and a nil error. The exact fields are documented in [`busylib.Status`](https://pkg.go.dev/github.com/lxdb/busylib-go#Status).
 
-## Control API version negotiation
+## Understand version negotiation
 
-The client discovers the device API semantic version from `/api/version`, caches a successful response, and sends it in the `X-API-Sem-Ver` header. A compatibility response can cause one refresh and retry when the request is safe to repeat.
+By default, the client requests `/api/version`, caches the returned API semantic version, and sends it in the `X-API-Sem-Ver` header. A compatible response can cause one refresh and retry when the request method and body are safe to repeat.
+
+Disable negotiation only when the endpoint does not implement this firmware contract:
 
 ```go
 client, err := busylib.NewClient(
-    busylib.WithBaseURL("http://busybar.local"),
-    busylib.WithVersionNegotiation(busylib.VersionNegotiationDisabled),
+	busylib.WithBaseURL("busybar.local"),
+	busylib.WithVersionNegotiation(busylib.VersionNegotiationDisabled),
 )
 ```
 
-Disable negotiation only when the endpoint does not implement the version contract. The client then omits version discovery and the version header.
+Disabling negotiation omits version discovery and the version header. It does not make an incompatible response schema safe.
 
-## Handle API errors
+## Handle failure
 
-HTTP operations return `*busylib.APIError` for non-success responses. Use `errors.As` when code must inspect the status code or parsed device message.
+Check the returned error before using a result. Use `errors.Is` for sentinel and context errors. Use `errors.As` for structured library errors.
 
 ```go
 var apiErr *busylib.APIError
 if errors.As(err, &apiErr) {
-    log.Printf("device request failed: status=%d message=%q", apiErr.StatusCode, apiErr.DeviceError)
+	log.Printf(
+		"device request failed: status=%d request_id=%s message=%q",
+		apiErr.StatusCode,
+		apiErr.RequestID,
+		apiErr.DeviceError,
+	)
 }
 ```
 
-Error bodies are bounded. If a response exceeds the configured limit, the client returns a size error instead of buffering the entire body.
+| Failure | Check |
+| --- | --- |
+| `context.DeadlineExceeded` or `context.Canceled` | Confirm the caller deadline and whether the operation was canceled. |
+| `*busylib.ValidationError` | Correct the request before retrying. No request was sent. |
+| `*busylib.RequestError` | Check endpoint reachability and the wrapped transport error. |
+| `*busylib.APIError` | Inspect the HTTP status, device message, and request ID. |
+| `*busylib.ProtocolError` | Treat the response as incompatible or malformed. |
+| `*busylib.VersionError` | Check firmware compatibility and version negotiation. |
 
-## Prepare and inspect a request
-
-Use `Prepare` when request construction and execution must happen separately.
-
-```go
-prepared, err := client.Prepare(busylib.Request{
-    Method:       http.MethodGet,
-    Path:         "/api/status",
-    ResponseMode: busylib.ResponseModeJSON,
-})
-if err != nil {
-    return err
-}
-
-targetURL := prepared.URL()
-log.Printf(
-    "request: %s %s request_id=%s",
-    prepared.Method(),
-    targetURL.String(),
-    prepared.RequestID(),
-)
-
-response, err := client.DoPrepared(ctx, prepared)
-if err != nil {
-    return err
-}
-
-log.Printf("response status: %d", response.StatusCode)
-```
-
-`PreparedRequest` is immutable. Inspect it through `Method`, `Path`, `URL`, `Header`, `ResponseMode`, and `RequestID`. `URL` and `Header` return copies; changing those copies does not change later execution.
-
-A prepared request can be executed more than once only when its body is repeatable. Prepare a new request instead of reusing one whose body is a one-shot stream.
-
-## Stream large files
-
-Use the storage streaming methods when a file should not be buffered in memory.
-
-```go
-err := client.Storage().WriteFile(ctx, "/ext/example.bin", localPath)
-```
-
-`Storage().ReadTo` streams a device file to an `io.Writer`. The built-in retry policy automatically retries only repeatable `GET`, `HEAD`, and `OPTIONS` requests. It does not replay mutating requests.
+Read the [error reference](reference/errors.md) before implementing retry or recovery behavior.
 
 ## Continue by task
 
-- Read [Transports](transports.md) before adding a status stream, MQTT connection, or USB CLI operation.
-- Read [Media](media.md) before sending images, audio, animations, or raw display frames.
-- Read [Compatibility](compatibility.md) before changing firmware, toolchain, or resource-limit assumptions.
+- Use the [service reference](reference/services.md) to find every device method.
+- Use [status streams](guides/status-streams.md) to receive changes over WebSocket.
+- Use [remote MQTT](integrations/remote-mqtt.md) when the device is not locally reachable.
+- Use [display and media](guides/display-and-media.md) to prepare and render visual or audio content.
+- Use [assets and storage](guides/assets-and-storage.md) for uploads and files.

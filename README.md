@@ -1,74 +1,75 @@
 # busylib-go
 
-`busylib-go` is a Go client library for BUSY Bar devices and remote MQTT workflows. It provides typed clients for device control, status streams, media preparation, frame decoding, snapshots, and USB CLI access.
-
-## What the library provides
-
-- Local device control over HTTP, with firmware API version negotiation.
-- Local status streams over WebSocket and remote status streams over MQTT.
-- A transport-neutral remote client and an optional Eclipse Paho adapter module.
-- Image, audio, and animation conversion for device-compatible media.
-- Frame decoding, snapshot helpers, and USB CLI access.
-
-## Requirements
-
-The supported Go toolchains, firmware contract, platforms, generated-code policy, and default safety limits are listed in [Compatibility](docs/compatibility.md).
+`busylib-go` is a Go client for BUSY Bar devices. It provides typed services for the device HTTP API, local and remote status streams, MQTT integration, media conversion, frame decoding, snapshots, and the USB firmware CLI.
 
 ## Install
 
-```sh
-go get github.com/lxdb/busylib-go@v0.1.0
-```
-
-The Eclipse Paho adapter is an independently versioned optional module:
+Install the main module:
 
 ```sh
-go get github.com/lxdb/busylib-go/pahotransport@v0.1.0
+go get github.com/lxdb/busylib-go@latest
 ```
 
-## Quick start
+Install the optional Eclipse Paho MQTT adapter only when the application uses it:
 
-Create a local client, give each operation a bounded context, and handle the returned error.
+```sh
+go get github.com/lxdb/busylib-go/pahotransport@latest
+```
+
+## Read device status
+
+`NewClient` connects to the BUSY Bar USB-network endpoint at `http://10.0.4.20` by default.
 
 ```go
 package main
 
 import (
-    "context"
-    "log"
-    "time"
+	"context"
+	"log"
+	"time"
 
-    "github.com/lxdb/busylib-go"
+	"github.com/lxdb/busylib-go"
 )
 
 func main() {
-    client, err := busylib.NewClient(busylib.WithBaseURL("http://busybar.local"))
-    if err != nil {
-        log.Fatal(err)
-    }
+	client, err := busylib.NewClient()
+	if err != nil {
+		log.Fatal(err)
+	}
 
-    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-    defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-    status, err := client.System().Status(ctx)
-    if err != nil {
-        log.Fatal(err)
-    }
+	status, err := client.System().Status(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-    log.Printf("firmware version: %s", status.Firmware.Version)
+	log.Printf("firmware version: %s", status.Firmware.Version)
 }
 ```
 
-The call succeeds when the device endpoint is reachable and returns a compatible status response. See [Getting started](docs/getting-started.md) for endpoint validation, API version overrides, error handling, and upload examples.
+The request succeeds when the device is reachable and returns a compatible status response. To use another hostname or address, pass `busylib.WithBaseURL("busybar.local")` or a complete HTTP or HTTPS URL.
 
-## Documentation
+## Choose an entry point
 
-Start with the [documentation index](docs/README.md). It routes readers to task-specific guides for transports, media, compatibility, development, releases, and device testing.
+| Goal | Start here |
+| --- | --- |
+| Connect a device and make the first request | [Getting started](docs/getting-started.md) |
+| Find a client service or method | [Service reference](docs/reference/services.md) |
+| Inspect status or change device settings | [Inspect and configure](docs/guides/inspect-and-configure.md) |
+| Render content or play audio | [Display and media](docs/guides/display-and-media.md) |
+| Upload assets or manage device files | [Assets and storage](docs/guides/assets-and-storage.md) |
+| Receive live device updates | [Status streams](docs/guides/status-streams.md) |
+| Connect through MQTT | [Remote MQTT](docs/integrations/remote-mqtt.md) |
+| Implement an MQTT transport | [Custom MQTT transport](docs/integrations/custom-mqtt-transport.md) |
+| Use the firmware CLI | [USB CLI](docs/integrations/usb-cli.md) |
+| Find a supporting package | [Package reference](docs/reference/packages.md) |
 
-## Contributing and support
+The [documentation index](docs/README.md) includes all consumer, integration, reference, and maintainer guides. Exact Go signatures, fields, constants, and examples are available on [`pkg.go.dev`](https://pkg.go.dev/github.com/lxdb/busylib-go).
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing code or documentation. Use [GitHub Issues](https://github.com/lxdb/busylib-go/issues) for reproducible bugs and focused feature requests. Report security issues according to [SECURITY.md](SECURITY.md).
+## Support and licensing
 
-## License
+Use [GitHub Issues](https://github.com/lxdb/busylib-go/issues) for reproducible bugs and focused feature requests. Follow the [security policy](SECURITY.md) for vulnerability reports.
 
-The project is licensed under the MIT License. See [LICENSE](LICENSE), [NOTICE](NOTICE), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The project uses the MIT License. See [LICENSE](LICENSE), [NOTICE](NOTICE), and [third-party notices](THIRD_PARTY_NOTICES.md).
