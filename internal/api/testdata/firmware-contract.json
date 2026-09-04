@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/busy-app/busybar-firmware.git",
   "branch": "release",
-  "firmwareCommit": "ac59f45cfcd14f6b0fccb8e8e8f47e183a537aaf",
-  "apiVersion": "25.0.0",
+  "firmwareCommit": "2cd7ec8abf8479ba3398241e99d291ec24f2a96f",
+  "apiVersion": "27.5.0",
   "protobufCommit": "dba670e2ddb5cda511af997ca5fcb1254e90917f",
   "license": "GPL-2.0-or-later",
   "statusStream": {
@@ -488,6 +488,34 @@
       "phase": 3,
       "sourceFile": "applications/services/web_server/http_api/api_root.c",
       "sourceSymbol": "http_api_root_callback"
+    },
+    {
+      "method": "GET",
+      "path": "/api/access/tokens",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_root.c",
+      "sourceSymbol": "api_access_api_tokens_list_callback"
+    },
+    {
+      "method": "POST",
+      "path": "/api/access/tokens",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_root.c",
+      "sourceSymbol": "api_access_api_tokens_mint_callback"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/access/tokens",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_root.c",
+      "sourceSymbol": "api_access_api_tokens_revoke_callback"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/access/tokens/{short_id}",
+      "phase": 3,
+      "sourceFile": "applications/services/web_server/http_api/api_root.c",
+      "sourceSymbol": "api_access_api_tokens_revoke_callback"
     },
     {
       "method": "DELETE",

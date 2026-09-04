@@ -11,11 +11,11 @@ import (
 
 const (
 	// ExpectedAPIVersion is the audited firmware API version.
-	ExpectedAPIVersion = "25.0.0"
+	ExpectedAPIVersion = "27.5.0"
 	// ExpectedOperationCount is the total number of audited HTTP operations.
-	ExpectedOperationCount = 68
+	ExpectedOperationCount = 72
 	// ExpectedSyncOperationCount is the number of synchronous HTTP operations.
-	ExpectedSyncOperationCount = 67
+	ExpectedSyncOperationCount = 71
 	// StreamPhase is the firmware owner phase for the status stream.
 	StreamPhase = 6
 	// ExpectedStreamUpdateKinds is the audited number of typed stream updates.

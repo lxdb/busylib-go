@@ -92,7 +92,7 @@ data[0] = color.blue;
 	}
 }
 
-func TestCheckLogDumpVerifiesAPI25FilenameAndJSONResponse(t *testing.T) {
+func TestCheckLogDumpVerifiesFirmwareFilenameAndJSONResponse(t *testing.T) {
 	root := t.TempDir()
 	const source = `
 #define HTTP_API_LOG_DUMP_FILENAME_MAX 64
@@ -115,7 +115,7 @@ MG_REPLY_ERROR(conn, 508, "Failed to dump logs.");
 		t.Fatalf("rewrite log dump fixture: %v", err)
 	}
 	if err := checkLogDump(root, make(map[string][]byte)); err == nil {
-		t.Fatal("checkLogDump accepted the API 24 path query")
+		t.Fatal("checkLogDump accepted the legacy path query")
 	}
 
 	drifted = strings.Replace(source, `\"path\"`, `\"file\"`, 1)
@@ -124,6 +124,95 @@ MG_REPLY_ERROR(conn, 508, "Failed to dump logs.");
 	}
 	if err := checkLogDump(root, make(map[string][]byte)); err == nil {
 		t.Fatal("checkLogDump accepted a changed response path key")
+	}
+}
+
+func TestCheckRequiredCapabilitiesVerifiesBehaviorMarkers(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"applications/services/web_server/http_api/api_root.c": `
+bool api_access_api_tokens_list_callback(
+bool api_access_api_tokens_mint_callback(
+bool api_access_api_tokens_revoke_callback(
+const char* access_tokens_path = "access/tokens";
+furi_string_start_with_str(path, access_tokens_path)
+furi_string_right(path, strlen(access_tokens_path));
+handled = api_access_tokens_callback(path, method, conn, msg, ctx);
+return api_access_api_tokens_list_callback(path, method, conn, msg, ctx);
+return api_access_api_tokens_mint_callback(path, method, conn, msg, ctx);
+return api_access_api_tokens_revoke_callback(path, method, conn, msg, ctx);
+`,
+		"applications/services/web_server/http_api/api_display.c": `
+struct mg_str z_index_token = mg_json_get_tok(element, "$.z_index");
+canvas_element->z_index = z_index;
+*default_z_index += 10;
+{"xpmbitmap", api_display_draw_parse_xpm_element},
+cJSON* json_element_ids = cJSON_GetObjectItem(body, "element_ids");
+canvas_delete_elements(canvas, app_name, (const char* const*)element_ids);
+`,
+		"applications/services/web_server/http_api/api_storage.c": `
+int value_len = mg_http_get_var(params_str, "append", value_str, sizeof(value_str));
+api_storage_parse_append_parameter(&msg->query, &append)
+http_upload_start(conn, msg, furi_string_get_cstr(file_path), append);
+`,
+		"applications/services/web_server/http_api/api_update.c": `
+_MG_JSON_RESULT(
+    conn,
+    error_code,
+    "{\"error\":\"%M\", \"error_code\":\"%s\"}\n",
+    MG_ESC(error_text),
+    error_code_text);
+`,
+	}
+	writeFirmwareFixture(t, root, files)
+
+	if err := checkRequiredCapabilities(root, make(map[string][]byte)); err != nil {
+		t.Fatalf("checkRequiredCapabilities: %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		sourceFile string
+		marker     string
+	}{
+		{name: "access token list callback definition", sourceFile: "applications/services/web_server/http_api/api_root.c", marker: "bool api_access_api_tokens_list_callback("},
+		{name: "access token mint callback definition", sourceFile: "applications/services/web_server/http_api/api_root.c", marker: "bool api_access_api_tokens_mint_callback("},
+		{name: "access token revoke callback definition", sourceFile: "applications/services/web_server/http_api/api_root.c", marker: "bool api_access_api_tokens_revoke_callback("},
+		{name: "access token path", sourceFile: "applications/services/web_server/http_api/api_root.c", marker: `const char* access_tokens_path = "access/tokens";`},
+		{name: "access token prefix match", sourceFile: "applications/services/web_server/http_api/api_root.c", marker: "furi_string_start_with_str(path, access_tokens_path)"},
+		{name: "access token path trimming", sourceFile: "applications/services/web_server/http_api/api_root.c", marker: "furi_string_right(path, strlen(access_tokens_path));"},
+		{name: "access token routing", sourceFile: "applications/services/web_server/http_api/api_root.c", marker: "handled = api_access_tokens_callback(path, method, conn, msg, ctx);"},
+		{name: "access token list dispatch", sourceFile: "applications/services/web_server/http_api/api_root.c", marker: "return api_access_api_tokens_list_callback(path, method, conn, msg, ctx);"},
+		{name: "access token mint dispatch", sourceFile: "applications/services/web_server/http_api/api_root.c", marker: "return api_access_api_tokens_mint_callback(path, method, conn, msg, ctx);"},
+		{name: "access token revoke dispatch", sourceFile: "applications/services/web_server/http_api/api_root.c", marker: "return api_access_api_tokens_revoke_callback(path, method, conn, msg, ctx);"},
+		{name: "display z index", sourceFile: "applications/services/web_server/http_api/api_display.c", marker: `mg_json_get_tok(element, "$.z_index")`},
+		{name: "display z index assignment", sourceFile: "applications/services/web_server/http_api/api_display.c", marker: "canvas_element->z_index = z_index;"},
+		{name: "display default z index progression", sourceFile: "applications/services/web_server/http_api/api_display.c", marker: "*default_z_index += 10;"},
+		{name: "display XPM bitmap", sourceFile: "applications/services/web_server/http_api/api_display.c", marker: `{"xpmbitmap", api_display_draw_parse_xpm_element}`},
+		{name: "selective display clear", sourceFile: "applications/services/web_server/http_api/api_display.c", marker: `cJSON_GetObjectItem(body, "element_ids")`},
+		{name: "selective display clear application", sourceFile: "applications/services/web_server/http_api/api_display.c", marker: "canvas_delete_elements(canvas, app_name, (const char* const*)element_ids);"},
+		{name: "storage append query", sourceFile: "applications/services/web_server/http_api/api_storage.c", marker: `mg_http_get_var(params_str, "append"`},
+		{name: "storage append parsing", sourceFile: "applications/services/web_server/http_api/api_storage.c", marker: "api_storage_parse_append_parameter(&msg->query, &append)"},
+		{name: "storage append consumption", sourceFile: "applications/services/web_server/http_api/api_storage.c", marker: "http_upload_start(conn, msg, furi_string_get_cstr(file_path), append);"},
+		{name: "update error code response", sourceFile: "applications/services/web_server/http_api/api_update.c", marker: `\"error_code\":\"%s\"`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			driftedRoot := t.TempDir()
+			fixture := make(map[string]string, len(files))
+			for name, contents := range files {
+				fixture[name] = contents
+			}
+			fixture[test.sourceFile] = strings.Replace(fixture[test.sourceFile], test.marker, "", 1)
+			if fixture[test.sourceFile] == files[test.sourceFile] {
+				t.Fatalf("test marker %q is missing from fixture", test.marker)
+			}
+			writeFirmwareFixture(t, driftedRoot, fixture)
+
+			if err := checkRequiredCapabilities(driftedRoot, make(map[string][]byte)); err == nil {
+				t.Fatalf("checkRequiredCapabilities accepted missing %s marker", test.name)
+			}
+		})
 	}
 }
 

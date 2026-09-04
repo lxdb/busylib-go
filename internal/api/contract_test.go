@@ -19,7 +19,7 @@ func TestFirmwareContractReceipt(t *testing.T) {
 		t.Fatalf("load firmware contract: %v", err)
 	}
 
-	if contract.FirmwareCommit != "ac59f45cfcd14f6b0fccb8e8e8f47e183a537aaf" {
+	if contract.FirmwareCommit != "2cd7ec8abf8479ba3398241e99d291ec24f2a96f" {
 		t.Fatalf("firmware commit = %q", contract.FirmwareCommit)
 	}
 	if contract.ProtobufCommit != "dba670e2ddb5cda511af997ca5fcb1254e90917f" {
@@ -27,6 +27,21 @@ func TestFirmwareContractReceipt(t *testing.T) {
 	}
 	if contract.License != "GPL-2.0-or-later" {
 		t.Fatalf("firmware license = %q", contract.License)
+	}
+	wantAccessTokenOperations := map[string]string{
+		"GET /api/access/tokens":               "api_access_api_tokens_list_callback",
+		"POST /api/access/tokens":              "api_access_api_tokens_mint_callback",
+		"DELETE /api/access/tokens":            "api_access_api_tokens_revoke_callback",
+		"DELETE /api/access/tokens/{short_id}": "api_access_api_tokens_revoke_callback",
+	}
+	for id, wantSymbol := range wantAccessTokenOperations {
+		operation, ok := contract.Operation(id)
+		if !ok {
+			t.Fatalf("%s is missing", id)
+		}
+		if operation.Phase != 3 || operation.SourceFile != "applications/services/web_server/http_api/api_root.c" || operation.SourceSymbol != wantSymbol {
+			t.Fatalf("%s operation = %#v", id, operation)
+		}
 	}
 }
 

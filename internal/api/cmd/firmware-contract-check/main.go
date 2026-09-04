@@ -102,10 +102,79 @@ func checkFirmware(root string, contract internalapi.Contract) error {
 	if err := checkOptionalTools(root, contract.OptionalTools, checked); err != nil {
 		return err
 	}
+	if err := checkRequiredCapabilities(root, checked); err != nil {
+		return err
+	}
 	if err := checkLogDump(root, checked); err != nil {
 		return err
 	}
 	return checkRemoteMQTT(root, contract.Remote, checked)
+}
+
+func checkRequiredCapabilities(root string, checked map[string][]byte) error {
+	const (
+		rootSource    = "applications/services/web_server/http_api/api_root.c"
+		displaySource = "applications/services/web_server/http_api/api_display.c"
+		storageSource = "applications/services/web_server/http_api/api_storage.c"
+		updateSource  = "applications/services/web_server/http_api/api_update.c"
+	)
+
+	for _, check := range []struct {
+		sourceFile string
+		markers    []string
+	}{
+		{
+			sourceFile: rootSource,
+			markers: []string{
+				"bool api_access_api_tokens_list_callback(",
+				"bool api_access_api_tokens_mint_callback(",
+				"bool api_access_api_tokens_revoke_callback(",
+				`const char* access_tokens_path = "access/tokens";`,
+				"furi_string_start_with_str(path, access_tokens_path)",
+				"furi_string_right(path, strlen(access_tokens_path));",
+				"handled = api_access_tokens_callback(path, method, conn, msg, ctx);",
+				"return api_access_api_tokens_list_callback(path, method, conn, msg, ctx);",
+				"return api_access_api_tokens_mint_callback(path, method, conn, msg, ctx);",
+				"return api_access_api_tokens_revoke_callback(path, method, conn, msg, ctx);",
+			},
+		},
+		{
+			sourceFile: displaySource,
+			markers: []string{
+				`mg_json_get_tok(element, "$.z_index")`,
+				"canvas_element->z_index = z_index;",
+				"*default_z_index += 10;",
+				`{"xpmbitmap", api_display_draw_parse_xpm_element}`,
+				`cJSON_GetObjectItem(body, "element_ids")`,
+				"canvas_delete_elements(canvas, app_name, (const char* const*)element_ids);",
+			},
+		},
+		{
+			sourceFile: storageSource,
+			markers: []string{
+				`mg_http_get_var(params_str, "append"`,
+				"api_storage_parse_append_parameter(&msg->query, &append)",
+				"http_upload_start(conn, msg, furi_string_get_cstr(file_path), append);",
+			},
+		},
+		{
+			sourceFile: updateSource,
+			markers: []string{
+				`"{\"error\":\"%M\", \"error_code\":\"%s\"}\n"`,
+			},
+		},
+	} {
+		data, err := readFirmwareFile(root, check.sourceFile, checked)
+		if err != nil {
+			return fmt.Errorf("required capabilities: %w", err)
+		}
+		for _, marker := range check.markers {
+			if !strings.Contains(string(data), marker) {
+				return fmt.Errorf("required capability marker %q is missing from %s", marker, check.sourceFile)
+			}
+		}
+	}
+	return nil
 }
 
 func checkHTTPScreenTransport(root string, checked map[string][]byte) error {
@@ -148,7 +217,7 @@ func checkLogDump(root string, checked map[string][]byte) error {
 	}
 	for _, marker := range markers {
 		if !strings.Contains(string(data), marker) {
-			return fmt.Errorf("API 25 log dump marker %q is missing from %s", marker, sourceFile)
+			return fmt.Errorf("firmware log dump marker %q is missing from %s", marker, sourceFile)
 		}
 	}
 	return nil
