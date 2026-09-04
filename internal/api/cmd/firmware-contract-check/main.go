@@ -35,20 +35,17 @@ func main() {
 	if err := checkFirmware(*firmwareDir, contract); err != nil {
 		fatalf("firmware contract drift: %v", err)
 	}
-	fmt.Printf("firmware contract matches %s at %s (API %s, %d operations, status stream, frames, snapshots, optional tools, and remote MQTT verified)\n", contract.Repository, contract.FirmwareCommit, contract.APIVersion, len(contract.Operations))
+	fmt.Printf("firmware contract matches %s release %s (API %s, %d operations, status stream, frames, snapshots, optional tools, and remote MQTT verified)\n", contract.Repository, contract.FirmwareRelease, contract.APIVersion, len(contract.Operations))
 }
 
 func checkFirmware(root string, contract internalapi.Contract) error {
-	head, err := gitOutput(root, "rev-parse", "HEAD")
+	source, err := newTaggedFirmwareSource(root, contract.FirmwareRelease)
 	if err != nil {
 		return err
 	}
-	if head != contract.FirmwareCommit {
-		return fmt.Errorf("HEAD = %s, audited commit = %s; audit the firmware diff before refreshing the receipt", head, contract.FirmwareCommit)
-	}
 
-	versionPath := filepath.Join(root, "applications/services/web_server/http_api/http_api.h")
-	versionData, err := os.ReadFile(versionPath)
+	const versionPath = "applications/services/web_server/http_api/http_api.h"
+	versionData, err := source.readFile(versionPath, make(map[string][]byte))
 	if err != nil {
 		return err
 	}
@@ -61,7 +58,7 @@ func checkFirmware(root string, contract internalapi.Contract) error {
 		return fmt.Errorf("API_VERSION = %s, receipt = %s", version, contract.APIVersion)
 	}
 
-	protoTree, err := gitOutput(root, "ls-tree", "HEAD", "assets/proto")
+	protoTree, err := gitOutput(root, "ls-tree", source.revision, "assets/proto")
 	if err != nil {
 		return err
 	}
@@ -77,7 +74,7 @@ func checkFirmware(root string, contract internalapi.Contract) error {
 	for _, operation := range contract.Operations {
 		data, ok := checked[operation.SourceFile]
 		if !ok {
-			data, err = os.ReadFile(filepath.Join(root, filepath.FromSlash(operation.SourceFile)))
+			data, err = source.readFile(operation.SourceFile, checked)
 			if err != nil {
 				return fmt.Errorf("%s: %w", operation.ID(), err)
 			}
@@ -87,31 +84,31 @@ func checkFirmware(root string, contract internalapi.Contract) error {
 			return fmt.Errorf("%s source symbol %q is missing from %s", operation.ID(), operation.SourceSymbol, operation.SourceFile)
 		}
 	}
-	if err := checkStatusStream(root, contract.StatusStream, checked); err != nil {
+	if err := checkStatusStream(source, contract.StatusStream, checked); err != nil {
 		return err
 	}
-	if err := checkFrames(root, contract.Frames, checked); err != nil {
+	if err := checkFrames(source, contract.Frames, checked); err != nil {
 		return err
 	}
-	if err := checkHTTPScreenTransport(root, checked); err != nil {
+	if err := checkHTTPScreenTransport(source, checked); err != nil {
 		return err
 	}
-	if err := checkSnapshots(root, contract, checked); err != nil {
+	if err := checkSnapshots(source, contract, checked); err != nil {
 		return err
 	}
-	if err := checkOptionalTools(root, contract.OptionalTools, checked); err != nil {
+	if err := checkOptionalTools(source, contract.OptionalTools, checked); err != nil {
 		return err
 	}
-	if err := checkRequiredCapabilities(root, checked); err != nil {
+	if err := checkRequiredCapabilities(source, checked); err != nil {
 		return err
 	}
-	if err := checkLogDump(root, checked); err != nil {
+	if err := checkLogDump(source, checked); err != nil {
 		return err
 	}
-	return checkRemoteMQTT(root, contract.Remote, checked)
+	return checkRemoteMQTT(source, contract.Remote, checked)
 }
 
-func checkRequiredCapabilities(root string, checked map[string][]byte) error {
+func checkRequiredCapabilities(source firmwareSource, checked map[string][]byte) error {
 	const (
 		rootSource    = "applications/services/web_server/http_api/api_root.c"
 		displaySource = "applications/services/web_server/http_api/api_display.c"
@@ -164,7 +161,7 @@ func checkRequiredCapabilities(root string, checked map[string][]byte) error {
 			},
 		},
 	} {
-		data, err := readFirmwareFile(root, check.sourceFile, checked)
+		data, err := source.readFile(check.sourceFile, checked)
 		if err != nil {
 			return fmt.Errorf("required capabilities: %w", err)
 		}
@@ -177,16 +174,16 @@ func checkRequiredCapabilities(root string, checked map[string][]byte) error {
 	return nil
 }
 
-func checkHTTPScreenTransport(root string, checked map[string][]byte) error {
+func checkHTTPScreenTransport(source firmwareSource, checked map[string][]byte) error {
 	const (
 		streamingSource = "applications/services/web_server/http_api/api_streaming.c"
 		webServerHeader = "applications/services/web_server/web_server_i.h"
 	)
-	streamingData, err := readFirmwareFile(root, streamingSource, checked)
+	streamingData, err := source.readFile(streamingSource, checked)
 	if err != nil {
 		return err
 	}
-	headerData, err := readFirmwareFile(root, webServerHeader, checked)
+	headerData, err := source.readFile(webServerHeader, checked)
 	if err != nil {
 		return err
 	}
@@ -200,9 +197,9 @@ func checkHTTPScreenTransport(root string, checked map[string][]byte) error {
 	return nil
 }
 
-func checkLogDump(root string, checked map[string][]byte) error {
+func checkLogDump(source firmwareSource, checked map[string][]byte) error {
 	const sourceFile = "applications/services/web_server/http_api/api_log.c"
-	data, err := readFirmwareFile(root, sourceFile, checked)
+	data, err := source.readFile(sourceFile, checked)
 	if err != nil {
 		return err
 	}
@@ -223,9 +220,9 @@ func checkLogDump(root string, checked map[string][]byte) error {
 	return nil
 }
 
-func checkStatusStream(root string, contract internalapi.StatusStreamContract, checked map[string][]byte) error {
+func checkStatusStream(source firmwareSource, contract internalapi.StatusStreamContract, checked map[string][]byte) error {
 	for _, reference := range contract.SourceReferences {
-		data, err := readFirmwareFile(root, reference.SourceFile, checked)
+		data, err := source.readFile(reference.SourceFile, checked)
 		if err != nil {
 			return fmt.Errorf("status stream: %w", err)
 		}
@@ -239,15 +236,15 @@ func checkStatusStream(root string, contract internalapi.StatusStreamContract, c
 		rootSource      = "applications/services/web_server/http_api/api_root.c"
 		publisherSource = "applications/services/state_publisher/state_publisher.c"
 	)
-	streamData, err := readFirmwareFile(root, streamSource, checked)
+	streamData, err := source.readFile(streamSource, checked)
 	if err != nil {
 		return err
 	}
-	rootData, err := readFirmwareFile(root, rootSource, checked)
+	rootData, err := source.readFile(rootSource, checked)
 	if err != nil {
 		return err
 	}
-	publisherData, err := readFirmwareFile(root, publisherSource, checked)
+	publisherData, err := source.readFile(publisherSource, checked)
 	if err != nil {
 		return err
 	}
@@ -297,9 +294,9 @@ func checkStatusStream(root string, contract internalapi.StatusStreamContract, c
 	return nil
 }
 
-func checkFrames(root string, contract internalapi.FrameContract, checked map[string][]byte) error {
+func checkFrames(source firmwareSource, contract internalapi.FrameContract, checked map[string][]byte) error {
 	for _, reference := range contract.SourceReferences {
-		data, err := readFirmwareFile(root, reference.SourceFile, checked)
+		data, err := source.readFile(reference.SourceFile, checked)
 		if err != nil {
 			return fmt.Errorf("frames: %w", err)
 		}
@@ -317,31 +314,31 @@ func checkFrames(root string, contract internalapi.FrameContract, checked map[st
 		backSource          = "applications/services/back_display/back_display.h"
 		canvasSource        = "applications/services/gui/modules/canvas.c"
 	)
-	httpData, err := readFirmwareFile(root, httpSource, checked)
+	httpData, err := source.readFile(httpSource, checked)
 	if err != nil {
 		return err
 	}
-	streamerData, err := readFirmwareFile(root, streamerSource, checked)
+	streamerData, err := source.readFile(streamerSource, checked)
 	if err != nil {
 		return err
 	}
-	subscriptionsData, err := readFirmwareFile(root, subscriptionsSource, checked)
+	subscriptionsData, err := source.readFile(subscriptionsSource, checked)
 	if err != nil {
 		return err
 	}
-	colorData, err := readFirmwareFile(root, colorSource, checked)
+	colorData, err := source.readFile(colorSource, checked)
 	if err != nil {
 		return err
 	}
-	frontData, err := readFirmwareFile(root, frontSource, checked)
+	frontData, err := source.readFile(frontSource, checked)
 	if err != nil {
 		return err
 	}
-	backData, err := readFirmwareFile(root, backSource, checked)
+	backData, err := source.readFile(backSource, checked)
 	if err != nil {
 		return err
 	}
-	canvasData, err := readFirmwareFile(root, canvasSource, checked)
+	canvasData, err := source.readFile(canvasSource, checked)
 	if err != nil {
 		return err
 	}
@@ -402,9 +399,9 @@ func checkFrames(root string, contract internalapi.FrameContract, checked map[st
 	return nil
 }
 
-func checkSnapshots(root string, contract internalapi.Contract, checked map[string][]byte) error {
+func checkSnapshots(source firmwareSource, contract internalapi.Contract, checked map[string][]byte) error {
 	for _, reference := range contract.Snapshots.SourceReferences {
-		data, err := readFirmwareFile(root, reference.SourceFile, checked)
+		data, err := source.readFile(reference.SourceFile, checked)
 		if err != nil {
 			return fmt.Errorf("snapshots: %w", err)
 		}
@@ -418,7 +415,7 @@ func checkSnapshots(root string, contract internalapi.Contract, checked map[stri
 		if !ok || operation.Phase != 3 {
 			return fmt.Errorf("snapshot endpoint GET %s is not owned by phase 3", endpoint.Path)
 		}
-		data, err := readFirmwareFile(root, operation.SourceFile, checked)
+		data, err := source.readFile(operation.SourceFile, checked)
 		if err != nil {
 			return err
 		}
@@ -430,7 +427,7 @@ func checkSnapshots(root string, contract internalapi.Contract, checked map[stri
 	}
 
 	const subscriptionsSource = "applications/services/state_publisher/subscriptions.c"
-	subscriptions, err := readFirmwareFile(root, subscriptionsSource, checked)
+	subscriptions, err := source.readFile(subscriptionsSource, checked)
 	if err != nil {
 		return err
 	}
@@ -443,9 +440,9 @@ func checkSnapshots(root string, contract internalapi.Contract, checked map[stri
 	return nil
 }
 
-func checkOptionalTools(root string, contract internalapi.OptionalToolsContract, checked map[string][]byte) error {
+func checkOptionalTools(source firmwareSource, contract internalapi.OptionalToolsContract, checked map[string][]byte) error {
 	for _, reference := range append(contract.CLI.SourceReferences, contract.Media.SourceReferences...) {
-		data, err := readFirmwareFile(root, reference.SourceFile, checked)
+		data, err := source.readFile(reference.SourceFile, checked)
 		if err != nil {
 			return fmt.Errorf("optional tools: %w", err)
 		}
@@ -455,7 +452,7 @@ func checkOptionalTools(root string, contract internalapi.OptionalToolsContract,
 	}
 
 	for _, command := range contract.CLI.Commands {
-		data, err := readFirmwareFile(root, command.SourceFile, checked)
+		data, err := source.readFile(command.SourceFile, checked)
 		if err != nil {
 			return fmt.Errorf("CLI command %s: %w", command.Name, err)
 		}
@@ -477,14 +474,14 @@ func checkOptionalTools(root string, contract internalapi.OptionalToolsContract,
 		audioSource      = "applications/services/audio/audio.c"
 		audioHeader      = "applications/services/audio/audio.h"
 	)
-	cliSocket, err := readFirmwareFile(root, cliSocketSource, checked)
+	cliSocket, err := source.readFile(cliSocketSource, checked)
 	if err != nil {
 		return err
 	}
 	if err := checkDefine(cliSocketSource, cliSocket, "CLI_SOCKET_PORT", contract.CLI.Port); err != nil {
 		return err
 	}
-	usbNetwork, err := readFirmwareFile(root, usbNetworkSource, checked)
+	usbNetwork, err := source.readFile(usbNetworkSource, checked)
 	if err != nil {
 		return err
 	}
@@ -492,14 +489,14 @@ func checkOptionalTools(root string, contract internalapi.OptionalToolsContract,
 	if !strings.Contains(string(usbNetwork), "{"+addressMarker+"}") {
 		return fmt.Errorf("%s is missing USB network address %s", usbNetworkSource, contract.CLI.DefaultAddress)
 	}
-	prompt, err := readFirmwareFile(root, promptSource, checked)
+	prompt, err := source.readFile(promptSource, checked)
 	if err != nil {
 		return err
 	}
 	if !strings.Contains(string(prompt), `"%s`+contract.CLI.Prompt+`"`) {
 		return fmt.Errorf("%s is missing CLI prompt %q", promptSource, contract.CLI.Prompt)
 	}
-	power, err := readFirmwareFile(root, powerSource, checked)
+	power, err := source.readFile(powerSource, checked)
 	if err != nil {
 		return err
 	}
@@ -509,14 +506,14 @@ func checkOptionalTools(root string, contract internalapi.OptionalToolsContract,
 		}
 	}
 
-	png, err := readFirmwareFile(root, pngSource, checked)
+	png, err := source.readFile(pngSource, checked)
 	if err != nil {
 		return err
 	}
 	if err := checkDefine(pngSource, png, "LV_USE_LODEPNG", 1); err != nil {
 		return err
 	}
-	display, err := readFirmwareFile(root, displaySource, checked)
+	display, err := source.readFile(displaySource, checked)
 	if err != nil {
 		return err
 	}
@@ -525,7 +522,7 @@ func checkOptionalTools(root string, contract internalapi.OptionalToolsContract,
 			return fmt.Errorf("%s is missing %q", displaySource, marker)
 		}
 	}
-	audio, err := readFirmwareFile(root, audioSource, checked)
+	audio, err := source.readFile(audioSource, checked)
 	if err != nil {
 		return err
 	}
@@ -537,7 +534,7 @@ func checkOptionalTools(root string, contract internalapi.OptionalToolsContract,
 			return fmt.Errorf("%s is missing %q", audioSource, marker)
 		}
 	}
-	header, err := readFirmwareFile(root, audioHeader, checked)
+	header, err := source.readFile(audioHeader, checked)
 	if err != nil {
 		return err
 	}
@@ -549,9 +546,9 @@ func checkOptionalTools(root string, contract internalapi.OptionalToolsContract,
 	return nil
 }
 
-func checkRemoteMQTT(root string, contract internalapi.RemoteContract, checked map[string][]byte) error {
+func checkRemoteMQTT(source firmwareSource, contract internalapi.RemoteContract, checked map[string][]byte) error {
 	for _, reference := range contract.SourceReferences {
-		data, err := readFirmwareFile(root, reference.SourceFile, checked)
+		data, err := source.readFile(reference.SourceFile, checked)
 		if err != nil {
 			return fmt.Errorf("remote MQTT: %w", err)
 		}
@@ -568,14 +565,14 @@ func checkRemoteMQTT(root string, contract internalapi.RemoteContract, checked m
 		httpSource         = "applications/services/mqtt/modules/mqtt_http_proxy.c"
 		streamSource       = "applications/services/mqtt/modules/mqtt_streaming.c"
 	)
-	connection, err := readFirmwareFile(root, connectionSource, checked)
+	connection, err := source.readFile(connectionSource, checked)
 	if err != nil {
 		return err
 	}
 	if err := checkDefine(connectionSource, connection, "MQTT_VERSION", contract.MQTTVersion); err != nil {
 		return err
 	}
-	internal, err := readFirmwareFile(root, internalSource, checked)
+	internal, err := source.readFile(internalSource, checked)
 	if err != nil {
 		return err
 	}
@@ -590,7 +587,7 @@ func checkRemoteMQTT(root string, contract internalapi.RemoteContract, checked m
 		}
 	}
 
-	subscription, err := readFirmwareFile(root, subscriptionSource, checked)
+	subscription, err := source.readFile(subscriptionSource, checked)
 	if err != nil {
 		return err
 	}
@@ -604,7 +601,7 @@ func checkRemoteMQTT(root string, contract internalapi.RemoteContract, checked m
 			return fmt.Errorf("%s is missing %q", subscriptionSource, marker)
 		}
 	}
-	message, err := readFirmwareFile(root, messageSource, checked)
+	message, err := source.readFile(messageSource, checked)
 	if err != nil {
 		return err
 	}
@@ -613,7 +610,7 @@ func checkRemoteMQTT(root string, contract internalapi.RemoteContract, checked m
 		return fmt.Errorf("%s is missing %q", messageSource, responseTopicMarker)
 	}
 
-	httpData, err := readFirmwareFile(root, httpSource, checked)
+	httpData, err := source.readFile(httpSource, checked)
 	if err != nil {
 		return err
 	}
@@ -670,7 +667,7 @@ func checkRemoteMQTT(root string, contract internalapi.RemoteContract, checked m
 		return fmt.Errorf("%s blocklist = %v, receipt = %v", httpSource, gotBlocklist, wantBlocklist)
 	}
 
-	streamData, err := readFirmwareFile(root, streamSource, checked)
+	streamData, err := source.readFile(streamSource, checked)
 	if err != nil {
 		return err
 	}
@@ -707,7 +704,7 @@ func checkRemoteMQTT(root string, contract internalapi.RemoteContract, checked m
 		return fmt.Errorf("%s remote stream now requests a complete snapshot", streamSource)
 	}
 	const publisherSource = "applications/services/state_publisher/state_publisher.c"
-	publisherData, err := readFirmwareFile(root, publisherSource, checked)
+	publisherData, err := source.readFile(publisherSource, checked)
 	if err != nil {
 		return err
 	}
@@ -727,11 +724,32 @@ func containsJSONKey(data []byte, key string) bool {
 		strings.Contains(source, `\"`+key+`\"`)
 }
 
-func readFirmwareFile(root, sourceFile string, checked map[string][]byte) ([]byte, error) {
+type firmwareSource struct {
+	root     string
+	revision string
+}
+
+func newTaggedFirmwareSource(root, release string) (firmwareSource, error) {
+	revision := "refs/tags/" + release
+	if _, err := gitOutput(root, "rev-parse", "--verify", revision+"^{commit}"); err != nil {
+		return firmwareSource{}, fmt.Errorf("resolve firmware release tag %q: %w", release, err)
+	}
+	return firmwareSource{root: root, revision: revision}, nil
+}
+
+func (source firmwareSource) readFile(sourceFile string, checked map[string][]byte) ([]byte, error) {
 	if data, ok := checked[sourceFile]; ok {
 		return data, nil
 	}
-	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(sourceFile)))
+	var (
+		data []byte
+		err  error
+	)
+	if source.revision == "" {
+		data, err = os.ReadFile(filepath.Join(source.root, filepath.FromSlash(sourceFile)))
+	} else {
+		data, err = gitOutputBytes(source.root, "show", source.revision+":"+filepath.ToSlash(sourceFile))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", sourceFile, err)
 	}
@@ -786,12 +804,17 @@ func cFunctionBody(sourceFile string, data []byte, symbol string) ([]byte, error
 }
 
 func gitOutput(root string, args ...string) (string, error) {
+	output, err := gitOutputBytes(root, args...)
+	return strings.TrimSpace(string(output)), err
+}
+
+func gitOutputBytes(root string, args ...string) ([]byte, error) {
 	command := exec.Command("git", append([]string{"-C", root}, args...)...)
 	output, err := command.Output()
 	if err != nil {
-		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
-	return strings.TrimSpace(string(output)), nil
+	return output, nil
 }
 
 func fatalf(format string, args ...any) {

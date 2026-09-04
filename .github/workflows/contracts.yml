@@ -22,6 +22,7 @@ jobs:
         with:
           repository: busy-app/busybar-firmware
           ref: release
+          fetch-tags: true
           path: busybar-firmware
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
