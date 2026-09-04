@@ -18,10 +18,12 @@ var ErrResponseTooLarge = errors.New("response exceeds the configured buffer lim
 // preserves a decoded JSON error object when available. Excerpt is bounded and
 // whitespace-normalized but can still contain sensitive device data.
 type APIError struct {
-	Method      string
-	Path        string
-	StatusCode  int
-	RequestID   string
+	Method     string
+	Path       string
+	StatusCode int
+	RequestID  string
+	// DeviceCode contains the firmware error_code value when present. It falls
+	// back to the legacy code value and represents either value as a string.
 	DeviceCode  string
 	DeviceError string
 	Excerpt     string
@@ -155,7 +157,9 @@ func newAPIError(method, path, requestID string, statusCode int, headerRequestID
 		} else if value, ok := payload["message"].(string); ok {
 			apiError.DeviceError = value
 		}
-		if code, ok := payload["code"]; ok {
+		if code, ok := payload["error_code"]; ok {
+			apiError.DeviceCode = fmt.Sprint(code)
+		} else if code, ok := payload["code"]; ok {
 			apiError.DeviceCode = fmt.Sprint(code)
 		}
 	}

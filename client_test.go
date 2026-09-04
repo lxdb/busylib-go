@@ -1020,6 +1020,70 @@ func TestAPIErrorPreservesRequestContextAndExcerpt(t *testing.T) {
 	}
 }
 
+func TestAPIErrorPrefersFirmwareErrorCodeAndSupportsLegacyCode(t *testing.T) {
+	tests := []struct {
+		name        string
+		payload     map[string]any
+		want        string
+		wantExcerpt string
+	}{
+		{
+			name:        "firmware string error code",
+			payload:     map[string]any{"error": "invalid request", "error_code": "INVALID_REQUEST"},
+			want:        "INVALID_REQUEST",
+			wantExcerpt: `"error_code":"INVALID_REQUEST"`,
+		},
+		{
+			name:        "legacy numeric code",
+			payload:     map[string]any{"error": "invalid request", "code": float64(409)},
+			want:        "409",
+			wantExcerpt: `"code":409`,
+		},
+		{
+			name:        "firmware error code wins",
+			payload:     map[string]any{"error": "invalid request", "error_code": "CURRENT", "code": float64(409)},
+			want:        "CURRENT",
+			wantExcerpt: `"error_code":"CURRENT"`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				writeJSON(t, w, test.payload)
+			}))
+			defer server.Close()
+
+			client, err := NewClient(
+				WithBaseURL(server.URL),
+				WithHTTPClient(server.Client()),
+				WithVersionNegotiation(VersionNegotiationDisabled),
+			)
+			if err != nil {
+				t.Fatalf("NewClient: %v", err)
+			}
+			_, err = client.Do(context.Background(), Request{
+				Method:       http.MethodGet,
+				Path:         "/api/status",
+				ResponseMode: ResponseModeJSON,
+			})
+			var apiErr *APIError
+			if !errors.As(err, &apiErr) {
+				t.Fatalf("error = %T %v, want APIError", err, err)
+			}
+			if apiErr.DeviceCode != test.want {
+				t.Fatalf("DeviceCode = %q, want %q", apiErr.DeviceCode, test.want)
+			}
+			if !reflect.DeepEqual(apiErr.Payload, test.payload) {
+				t.Fatalf("Payload = %#v, want %#v", apiErr.Payload, test.payload)
+			}
+			if !strings.Contains(apiErr.Excerpt, test.wantExcerpt) {
+				t.Fatalf("Excerpt = %q, want normalized code field %q", apiErr.Excerpt, test.wantExcerpt)
+			}
+		})
+	}
+}
+
 func TestTransportRetryUsesSafeMethodsAndRepeatableBodiesOnly(t *testing.T) {
 	attempts := 0
 	client, err := NewClient(
