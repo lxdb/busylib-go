@@ -23,7 +23,7 @@
 | `scripts/verify.sh integration` | Broker-backed Paho tests and device-tag compilation | Docker and pinned Mosquitto image |
 | `scripts/verify.sh fuzz` | Scheduled frame fuzz target | Go toolchain and configured time |
 | `scripts/verify.sh history` | Conventional Commit history after bootstrap | Git history |
-| `scripts/verify.sh device` | Physical HTTP, WebSocket, media, and USB behavior | BUSY Bar and both addresses |
+| `scripts/verify.sh device` | Physical HTTP, WebSocket, media, and USB behavior | BUSY Bar, both addresses, and expected firmware/API versions |
 | `scripts/verify.sh all` | Every device-free local gate | All device-free requirements above |
 | `scripts/verify.sh release` | All gates followed by physical-device tests | Complete release environment |
 
@@ -44,10 +44,12 @@ Set both addresses so the harness cannot pass through skipped device tests:
 ```sh
 BUSYBAR_BASE_URL=http://device-address \
 BUSYBAR_USB_ADDRESS=device-usb-address \
+BUSYBAR_EXPECTED_FIRMWARE_VERSION=1.2.3 \
+BUSYBAR_EXPECTED_API_VERSION=27.5.0 \
 scripts/verify.sh device
 ```
 
-Set `BUSYBAR_ACCESS_KEY` only when the local HTTP API requires it. The device phase verifies local HTTP snapshots, WebSocket lifecycle, USB commands, and media upload, read-back, and cleanup under a unique application name.
+Set `BUSYBAR_ACCESS_KEY` only when the local HTTP API requires a credential; the harness sends it as an API token. The device phase first requires the reported firmware and API versions to match the expected values. It then verifies local HTTP snapshots, WebSocket lifecycle, access-token authorization and self-revocation, USB commands, nested media upload and read-back, append behavior, XPM layering, selective element removal, and cleanup under unique application names. The harness isolates selective clear in a dedicated final process because firmware 1.2.3 can restart while processing its internal element-ID list.
 
 A hosted build can compile device-tagged tests but cannot prove device reachability, firmware compatibility, or media behavior. Record the device model, firmware version, exact command, and result without credentials or device tokens. See the [device test README](../../integration/device/README.md) for the test boundary.
 

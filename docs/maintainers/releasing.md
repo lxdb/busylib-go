@@ -39,6 +39,8 @@ Then run the complete release command with both physical addresses:
 ```sh
 BUSYBAR_BASE_URL=http://device-address \
 BUSYBAR_USB_ADDRESS=device-usb-address \
+BUSYBAR_EXPECTED_FIRMWARE_VERSION=1.2.3 \
+BUSYBAR_EXPECTED_API_VERSION=27.5.0 \
 BUSYBAR_FIRMWARE_DIR=/path/to/busybar-firmware \
 scripts/verify.sh release
 ```

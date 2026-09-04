@@ -13,6 +13,8 @@ Every operation returns an error that the caller must inspect. Match structured 
 | [`*busylib.VersionError`](https://pkg.go.dev/github.com/lxdb/busylib-go#VersionError) | API version discovery or compatibility retry failed. | Check firmware compatibility and the wrapped discovery error. |
 | [`busylib.ErrResponseTooLarge`](https://pkg.go.dev/github.com/lxdb/busylib-go#ErrResponseTooLarge) | A buffered HTTP response exceeded the client limit. | Use a streaming method when available or raise the limit only for a measured requirement. |
 
+`APIError.DeviceCode` contains the firmware `error_code` value when present. For older payloads, it uses `code` instead. The client represents either value as a string.
+
 ```go
 var apiErr *busylib.APIError
 switch {

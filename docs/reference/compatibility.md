@@ -29,6 +29,12 @@ The local client discovers the API semantic version, caches it, and sends it in 
 
 `busylib.WithVersionNegotiation(busylib.VersionNegotiationDisabled)` supports endpoints that do not implement discovery. It omits version discovery and the header. It does not validate or translate an incompatible response schema.
 
+### Selective display clear on firmware 1.2.3
+
+Firmware 1.2.3 has two known `ClearElements` defects. It ignores the application name when it is sent in the request body, and its internal `element_ids` pointer list is unterminated. The library sends the application name as a query parameter to avoid the body-application defect. It cannot correct the unterminated pointer list; a selective clear can behave incorrectly or restart the device.
+
+The recorded API contract and device-free tests establish the library request shape only. Verify selective clear behavior on a physical device before relying on it in a device workflow.
+
 ## Generated protobuf code
 
 Files under `proto/` are generated. Do not edit `.pb.go` files by hand. The generation scripts verify the source license, mapped schema digests, and complete schema inventory before writing output.

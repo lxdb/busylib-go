@@ -7,7 +7,7 @@
 ```go
 client, err := busylib.NewClient(
 	busylib.WithBaseURL("busybar.local"),
-	busylib.WithLocalAccessKey(accessKey),
+	busylib.WithLocalAccessToken(accessToken),
 )
 if err != nil {
 	return err
@@ -23,7 +23,8 @@ if err != nil {
 | [`WithBaseURL`](https://pkg.go.dev/github.com/lxdb/busylib-go#WithBaseURL) | Select a hostname, IP address, or HTTP or HTTPS origin. |
 | [`WithHTTPClient`](https://pkg.go.dev/github.com/lxdb/busylib-go#WithHTTPClient) | Supply the `http.Client` used for all requests. |
 | [`WithTimeout`](https://pkg.go.dev/github.com/lxdb/busylib-go#WithTimeout) | Limit a request when its context has no earlier deadline. Zero disables the client timeout. |
-| [`WithLocalAccessKey`](https://pkg.go.dev/github.com/lxdb/busylib-go#WithLocalAccessKey) | Send a local device API token. Remote mode rejects this option. |
+| [`WithLocalAccessToken`](https://pkg.go.dev/github.com/lxdb/busylib-go#WithLocalAccessToken) | Send a numeric access key or minted access token. Preferred for new code. Remote mode rejects this option. |
+| [`WithLocalAccessKey`](https://pkg.go.dev/github.com/lxdb/busylib-go#WithLocalAccessKey) | Deprecated source-compatible alias for `WithLocalAccessToken`. |
 | [`WithSessionID`](https://pkg.go.dev/github.com/lxdb/busylib-go#WithSessionID) | Add a stable session identifier to requests. |
 | [`WithRequestIDGenerator`](https://pkg.go.dev/github.com/lxdb/busylib-go#WithRequestIDGenerator) | Replace the concurrent-safe request ID generator. |
 | [`WithRetryPolicy`](https://pkg.go.dev/github.com/lxdb/busylib-go#WithRetryPolicy) | Set attempts and backoff for safe, repeatable requests. |
@@ -32,6 +33,8 @@ if err != nil {
 | [`WithEndpointMode`](https://pkg.go.dev/github.com/lxdb/busylib-go#WithEndpointMode) | Select local or remote request rules. Applications normally receive remote mode through `remote.NewClient`. |
 
 Options validate their input during `NewClient`. An invalid option returns an error before the client sends a request.
+
+`WithLocalAccessToken` and the deprecated `WithLocalAccessKey` both send the credential in `X-API-Token`. Do not log the credential, the header, or a response payload that contains a token.
 
 ## Use typed services
 

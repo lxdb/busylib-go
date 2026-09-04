@@ -79,7 +79,19 @@ if err := client.Settings().SetHTTPAccess(
 }
 ```
 
-Create later local clients with `busylib.WithLocalAccessKey(accessKey)`. Do not log the key.
+Create later local clients with `busylib.WithLocalAccessToken(accessKey)`. The device accepts either the configured numeric access key or a minted access token in `X-API-Token`. The deprecated `WithLocalAccessKey` alias remains available for source compatibility. Do not log either credential.
+
+## Manage access tokens
+
+Use the following lifecycle for a token that an application owns:
+
+1. List existing token metadata with `client.Settings().AccessTokens(ctx)`.
+2. Mint a named token with `client.Settings().MintAccessToken(ctx, "calendar")`.
+3. Capture the returned one-time `Token` in credential storage. Never print or log it.
+4. Construct the application's local client with `busylib.WithLocalAccessToken(token)`.
+5. Revoke the token by its `ShortID` with `client.Settings().RevokeAccessToken(ctx, shortID)` when the application no longer needs it.
+
+A token-authenticated client cannot mint another token or revoke all tokens. It can revoke its own token. Keep a separate authorized client only when the application must manage other tokens.
 
 ## Read or set time
 

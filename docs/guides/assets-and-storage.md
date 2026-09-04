@@ -4,13 +4,13 @@ Use application assets for display and audio content. Use storage methods for di
 
 ## Upload an application asset
 
-An asset belongs to one application name and one relative file path.
+An asset belongs to one application name and one relative file path. Nested paths are valid.
 
 ```go
 if err := client.Assets().UploadFile(
 	ctx,
 	"calendar",
-	"logo.png",
+	"icons/logo.png",
 	"./logo.png",
 ); err != nil {
 	return err
@@ -29,6 +29,10 @@ if err := client.Assets().DeleteApplicationAssets(ctx, "calendar"); err != nil {
 
 This operation removes every asset owned by `calendar`. It does not remove only one file.
 
+## Asset path limits
+
+Application names accept 31 runtime bytes. The OpenAPI contract says 32 bytes, but the library uses the device's actual 31-byte limit. Uploaded asset paths are safe relative paths of at most 64 bytes, including nested paths such as `icons/logo.png`. Firmware stock asset paths are safe relative paths of at most 256 bytes and must begin with `shared/`.
+
 ## Write a storage file
 
 ```go
@@ -41,7 +45,22 @@ if err := client.Storage().WriteFile(
 }
 ```
 
-`WriteFile` uses a repeatable file body. `Storage().Write` accepts any `busylib.Body` and preserves that body's replay rules.
+`WriteFile` uses a repeatable file body and always replaces the selected path. `Storage().Write` accepts any `busylib.Body` and preserves that body's replay rules.
+
+To append, use `Write` and set `Append`:
+
+```go
+appendContent := true
+if err := client.Storage().Write(ctx, busylib.WriteStorageFileRequest{
+	Path:   "/ext/calendar/events.log",
+	Body:   busylib.BytesBody([]byte("started\n"), "text/plain"),
+	Append: &appendContent,
+}); err != nil {
+	return err
+}
+```
+
+`Append` is a `*bool`: `nil` omits the option and uses the firmware default replacement behavior, a pointer to `false` sends `append=0`, and a pointer to `true` sends `append=1`.
 
 ## Read a small file
 

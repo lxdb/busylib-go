@@ -42,6 +42,30 @@ func ExampleSettingsService_Name() {
 	log.Printf("device name: %s", name.Name)
 }
 
+func ExampleSettingsService_MintAccessToken() {
+	bootstrapClient, err := busylib.NewClient()
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	minted, err := bootstrapClient.Settings().MintAccessToken(ctx, "example")
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	client, err := busylib.NewClient(busylib.WithLocalAccessToken(minted.Token))
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	if err := client.Settings().RevokeAccessToken(ctx, minted.ShortID); err != nil {
+		log.Print(err)
+	}
+}
+
 func ExampleDisplayService_Brightness() {
 	client, err := busylib.NewClient()
 	if err != nil {
@@ -57,6 +81,40 @@ func ExampleDisplayService_Brightness() {
 		return
 	}
 	log.Printf("display brightness: %s", brightness.Value)
+}
+
+func ExampleDisplayService_ClearElements() {
+	client, err := busylib.NewClient()
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	const xpm = `! XPM2
+4 4 2 1
+. c #000000
++ c #FFFFFF
+....
+.++.
+.++.
+....`
+	zero, ten := 0, 10
+	background := busylib.NewRectangleElement("background", 16, 16)
+	background.ZIndex = &zero
+	bitmap := busylib.NewXPMBitmapElement("bitmap", xpm)
+	bitmap.ZIndex = &ten
+	if err := client.Display().Draw(ctx, busylib.NewDisplayElements("example", background, bitmap)); err != nil {
+		log.Print(err)
+		return
+	}
+	if err := client.Display().ClearElements(ctx, busylib.ClearDisplayElementsRequest{
+		ApplicationName: "example",
+		ElementIDs:      []string{"bitmap"},
+	}); err != nil {
+		log.Print(err)
+	}
 }
 
 func ExampleAudioService_Volume() {
@@ -106,6 +164,25 @@ func ExampleStorageService_Status() {
 		return
 	}
 	log.Printf("free bytes: %d", status.FreeBytes)
+}
+
+func ExampleStorageService_Write_append() {
+	client, err := busylib.NewClient()
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	appendContent := true
+	if err := client.Storage().Write(ctx, busylib.WriteStorageFileRequest{
+		Path:   "/ext/example/events.log",
+		Body:   busylib.BytesBody([]byte("started\n"), "text/plain"),
+		Append: &appendContent,
+	}); err != nil {
+		log.Print(err)
+	}
 }
 
 func ExampleBusyService_Snapshot() {

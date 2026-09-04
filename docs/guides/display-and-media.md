@@ -23,6 +23,50 @@ if err := client.Display().Draw(ctx, request); err != nil {
 
 Use `client.Display().Clear(ctx, "calendar")` to remove only that application's elements. An empty application name removes all rendered elements.
 
+## Draw an inline XPM bitmap
+
+`NewXPMBitmapElement` accepts XPM2 data. `ZIndex` is a pointer, so set it only when the application needs an explicit layer.
+
+```go
+const badgeXPM = `! XPM2
+4 4 2 1
+. c #000000
++ c #FFFFFF
+....
+.++.
+.++.
+....`
+
+zero, ten, twenty := 0, 10, 20
+background := busylib.NewRectangleElement("background", 16, 16)
+background.ZIndex = &zero
+badge := busylib.NewXPMBitmapElement("badge", badgeXPM)
+badge.ZIndex = &ten
+label := busylib.NewTextElement("label", "Now", busylib.FontNormal)
+label.ZIndex = &twenty
+
+if err := client.Display().Draw(
+	ctx,
+	busylib.NewDisplayElements("calendar", background, badge, label),
+); err != nil {
+	return err
+}
+
+if err := client.Display().ClearElements(ctx, busylib.ClearDisplayElementsRequest{
+	ApplicationName: "calendar",
+	ElementIDs:      []string{"badge", "label"},
+}); err != nil {
+	return err
+}
+```
+
+Set `ApplicationName` to limit removal to elements owned by that application. If it is empty, the firmware applies the `ElementIDs` filter across all applications.
+
+When `ZIndex` is omitted, firmware sequences elements in request order with default layers `0`, `10`, and `20` for the first three elements.
+
+> [!WARNING]
+> Firmware 1.2.3 has an unterminated internal element-ID list. `ClearElements` can behave incorrectly or restart the device. The library sends the application name in the query to avoid the separate body-application bug, but it cannot fix the pointer-list bug. Verify selective clear on a physical device before relying on it.
+
 ## Convert, upload, and draw an image
 
 The `convert` package prepares image bytes but does not contact the device.

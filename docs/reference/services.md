@@ -27,6 +27,10 @@ Use `client.Settings()` to read or change device-wide HTTP access and naming set
 | --- | --- | --- | --- |
 | [`client.Settings().HTTPAccess`](https://pkg.go.dev/github.com/lxdb/busylib-go#SettingsService.HTTPAccess) | Read the local HTTP access mode. | Yes | [Inspect and configure](../guides/inspect-and-configure.md) |
 | [`client.Settings().SetHTTPAccess`](https://pkg.go.dev/github.com/lxdb/busylib-go#SettingsService.SetHTTPAccess) | Change the local HTTP access mode and optional key. | Yes | [Inspect and configure](../guides/inspect-and-configure.md) |
+| [`client.Settings().AccessTokens`](https://pkg.go.dev/github.com/lxdb/busylib-go#SettingsService.AccessTokens) | List stored access-token metadata without secrets. | Yes | [Inspect and configure](../guides/inspect-and-configure.md) |
+| [`client.Settings().MintAccessToken`](https://pkg.go.dev/github.com/lxdb/busylib-go#SettingsService.MintAccessToken) | Create an access token and return its one-time secret. | Yes | [Inspect and configure](../guides/inspect-and-configure.md) |
+| [`client.Settings().RevokeAccessToken`](https://pkg.go.dev/github.com/lxdb/busylib-go#SettingsService.RevokeAccessToken) | Remove one access token by short ID. | Yes | [Inspect and configure](../guides/inspect-and-configure.md) |
+| [`client.Settings().RevokeAllAccessTokens`](https://pkg.go.dev/github.com/lxdb/busylib-go#SettingsService.RevokeAllAccessTokens) | Remove every stored access token. | Yes | [Inspect and configure](../guides/inspect-and-configure.md) |
 | [`client.Settings().Name`](https://pkg.go.dev/github.com/lxdb/busylib-go#SettingsService.Name) | Read the device name. | Yes | [Inspect and configure](../guides/inspect-and-configure.md) |
 | [`client.Settings().SetName`](https://pkg.go.dev/github.com/lxdb/busylib-go#SettingsService.SetName) | Validate and change the device name. | Yes | [Inspect and configure](../guides/inspect-and-configure.md) |
 
@@ -40,6 +44,7 @@ Use `client.Display()` to control brightness, draw application elements, clear c
 | [`client.Display().SetBrightness`](https://pkg.go.dev/github.com/lxdb/busylib-go#DisplayService.SetBrightness) | Select automatic brightness or a percentage. | Yes | [Display and media](../guides/display-and-media.md) |
 | [`client.Display().Draw`](https://pkg.go.dev/github.com/lxdb/busylib-go#DisplayService.Draw) | Validate and render application elements. | Yes | [Display and media](../guides/display-and-media.md) |
 | [`client.Display().Clear`](https://pkg.go.dev/github.com/lxdb/busylib-go#DisplayService.Clear) | Remove one application's elements or all rendered elements. | Yes | [Display and media](../guides/display-and-media.md) |
+| [`client.Display().ClearElements`](https://pkg.go.dev/github.com/lxdb/busylib-go#DisplayService.ClearElements) | Remove selected element IDs from one application or all applications. | Yes | [Display and media](../guides/display-and-media.md) |
 | [`client.Display().Screen`](https://pkg.go.dev/github.com/lxdb/busylib-go#DisplayService.Screen) | Capture decoded pixel bytes from the selected display. | Yes | [Display and media](../guides/display-and-media.md) |
 
 ## Audio
@@ -72,7 +77,7 @@ Use `client.Storage()` to manage files and directories in device storage.
 
 | Method | Effect | Remote MQTT | Guide |
 | --- | --- | --- | --- |
-| [`client.Storage().Write`](https://pkg.go.dev/github.com/lxdb/busylib-go#StorageService.Write) | Replace a device file from a `busylib.Body`. | Yes | [Assets and storage](../guides/assets-and-storage.md) |
+| [`client.Storage().Write`](https://pkg.go.dev/github.com/lxdb/busylib-go#StorageService.Write) | Replace or append to a device file from a `busylib.Body`. | Yes | [Assets and storage](../guides/assets-and-storage.md) |
 | [`client.Storage().WriteFile`](https://pkg.go.dev/github.com/lxdb/busylib-go#StorageService.WriteFile) | Upload a local file to a device path. | Yes | [Assets and storage](../guides/assets-and-storage.md) |
 | [`client.Storage().Read`](https://pkg.go.dev/github.com/lxdb/busylib-go#StorageService.Read) | Read a bounded device file into memory. | Yes | [Assets and storage](../guides/assets-and-storage.md) |
 | [`client.Storage().ReadTo`](https://pkg.go.dev/github.com/lxdb/busylib-go#StorageService.ReadTo) | Stream a device file to an `io.Writer`. | Yes | [Assets and storage](../guides/assets-and-storage.md) |

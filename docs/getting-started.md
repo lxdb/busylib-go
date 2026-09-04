@@ -6,7 +6,7 @@ This guide installs the main module, creates a local client, and verifies that t
 
 - Use a Go version supported by the root module. Read [`go.mod`](../go.mod) for the exact minimum version.
 - Connect the BUSY Bar through USB networking or another reachable local-network address.
-- Use an access key if the device HTTP API requires one.
+- Use a local HTTP credential if the device API requires one.
 
 ## Install the module
 
@@ -35,16 +35,16 @@ client, err := busylib.NewClient(
 
 A hostname or IP address without a scheme uses `http`. The client discards a path in the base URL and stores only the endpoint origin.
 
-If the device requires a local access key, configure it when you create the client:
+If the device requires credentials, configure its numeric access key or minted access token when you create the client:
 
 ```go
 client, err := busylib.NewClient(
 	busylib.WithBaseURL("busybar.local"),
-	busylib.WithLocalAccessKey(accessKey),
+	busylib.WithLocalAccessToken(accessToken),
 )
 ```
 
-Do not log the access key or include it in an error message.
+`WithLocalAccessToken` sends either credential in `X-API-Token`. `WithLocalAccessKey` is a deprecated source-compatible alias and sends the same header. Do not log the credential or include it in an error message.
 
 ## Make the first request
 
