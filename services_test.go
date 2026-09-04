@@ -136,6 +136,63 @@ func serviceRequestCases(t *testing.T) []serviceRequestCase {
 		successCase("settings set access", http.MethodPost, "/api/access", "key=1234&mode=key", func(ctx context.Context, client *Client) error {
 			return client.Settings().SetHTTPAccess(ctx, HTTPAccessKey, "1234")
 		}, okJSON),
+		{
+			name: "settings access tokens",
+			call: func(ctx context.Context, client *Client) error {
+				got, err := client.Settings().AccessTokens(ctx)
+				if err != nil {
+					return err
+				}
+				want := AccessTokensInfo{Tokens: []StoredAccessToken{{
+					ShortID:    "AAMTBO0f",
+					DisplayID:  "AAMTBO0f…Wn4fID",
+					Name:       "Laptop",
+					CreatedAt:  "1785812863582",
+					LastUsedAt: "1785812891337",
+				}}}
+				if !reflect.DeepEqual(got, want) {
+					t.Fatalf("AccessTokens = %#v, want %#v", got, want)
+				}
+				return nil
+			},
+			method:   http.MethodGet,
+			path:     "/api/access/tokens",
+			response: `{"tokens":[{"short_id":"AAMTBO0f","display_id":"AAMTBO0f…Wn4fID","name":"Laptop","created_at":"1785812863582","last_used_at":"1785812891337"}]}`,
+		},
+		{
+			name: "settings mint access token",
+			call: func(ctx context.Context, client *Client) error {
+				got, err := client.Settings().MintAccessToken(ctx, "")
+				if err != nil {
+					return err
+				}
+				want := MintedAccessToken{
+					StoredAccessToken: StoredAccessToken{
+						ShortID:    "AAMTBO0f",
+						DisplayID:  "AAMTBO0f…Wn4fID",
+						Name:       "",
+						CreatedAt:  "1785812863582",
+						LastUsedAt: "0",
+					},
+					Token: "AAMTBO0fvAxB5ZO8ds8bA1JofGWn4fID",
+				}
+				if !reflect.DeepEqual(got, want) {
+					t.Fatalf("MintAccessToken = %#v, want %#v", got, want)
+				}
+				return nil
+			},
+			method:              http.MethodPost,
+			path:                "/api/access/tokens",
+			expectedJSONBody:    `{"name":""}`,
+			expectedContentType: "application/json; charset=utf-8",
+			response:            `{"short_id":"AAMTBO0f","display_id":"AAMTBO0f…Wn4fID","name":"","created_at":"1785812863582","last_used_at":"0","token":"AAMTBO0fvAxB5ZO8ds8bA1JofGWn4fID"}`,
+		},
+		successCase("settings revoke access token", http.MethodDelete, "/api/access/tokens/AAMTBO0f", "", func(ctx context.Context, client *Client) error {
+			return client.Settings().RevokeAccessToken(ctx, "AAMTBO0f")
+		}, okJSON).withOperationID("DELETE /api/access/tokens/{short_id}"),
+		successCase("settings revoke all access tokens", http.MethodDelete, "/api/access/tokens", "", func(ctx context.Context, client *Client) error {
+			return client.Settings().RevokeAllAccessTokens(ctx)
+		}, okJSON),
 		jsonGetCase("settings name", "/api/name", func(ctx context.Context, client *Client) error {
 			_, err := client.Settings().Name(ctx)
 			return err

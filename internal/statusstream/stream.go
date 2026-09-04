@@ -27,7 +27,7 @@ type Config struct {
 	BaseURL            *url.URL
 	HTTPClient         *http.Client
 	Timeout            time.Duration
-	LocalAccessKey     string
+	LocalAccessToken   string
 	VersionNegotiation bool
 	APISemVer          func(context.Context) (string, error)
 	RefreshAPISemVer   func(context.Context) (string, error)
@@ -362,8 +362,8 @@ func (s *Stream) connectOnce(ctx context.Context, attempt int) (*websocket.Conn,
 		target := *s.config.BaseURL
 		target.Path = statusStreamPath
 		query := target.Query()
-		if s.config.LocalAccessKey != "" {
-			query.Set("x-api-token", s.config.LocalAccessKey)
+		if s.config.LocalAccessToken != "" {
+			query.Set("x-api-token", s.config.LocalAccessToken)
 		}
 		if s.config.VersionNegotiation {
 			version, err := s.config.APISemVer(ctx)

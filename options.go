@@ -62,7 +62,7 @@ type clientConfig struct {
 	httpClientConfigured bool
 	timeout              time.Duration
 	endpointMode         EndpointMode
-	localAccessKey       string
+	localAccessToken     string
 	sessionID            string
 	requestIDGenerator   func() string
 	retryPolicy          RetryPolicy
@@ -137,7 +137,7 @@ func WithTimeout(timeout time.Duration) Option {
 
 // WithEndpointMode selects local-device or remote-transport request behavior.
 // Remote mode also requires WithBaseURL and WithHTTPClient and rejects
-// WithLocalAccessKey. Applications normally use remote.NewClient instead.
+// WithLocalAccessToken. Applications normally use remote.NewClient instead.
 func WithEndpointMode(mode EndpointMode) Option {
 	return func(config *clientConfig) error {
 		switch mode {
@@ -150,13 +150,22 @@ func WithEndpointMode(mode EndpointMode) Option {
 	}
 }
 
-// WithLocalAccessKey adds a local device API token to requests. Remote mode
-// rejects this option. Callers must not also set X-API-Token in Request.Header.
-func WithLocalAccessKey(key string) Option {
+// WithLocalAccessToken adds a local HTTP credential to requests. The device
+// accepts either its configured numeric access key or a minted access token.
+// Remote mode rejects this option. Callers must not also set X-API-Token in
+// Request.Header.
+func WithLocalAccessToken(token string) Option {
 	return func(config *clientConfig) error {
-		config.localAccessKey = key
+		config.localAccessToken = token
 		return nil
 	}
+}
+
+// WithLocalAccessKey adds a local HTTP credential to requests.
+//
+// Deprecated: use WithLocalAccessToken.
+func WithLocalAccessKey(key string) Option {
+	return WithLocalAccessToken(key)
 }
 
 // WithSessionID adds a default x-session-id header to requests. Request.SessionID

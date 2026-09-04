@@ -12,10 +12,14 @@ import (
 )
 
 var (
-	colorPattern       = regexp.MustCompile(`^#[a-fA-F0-9]{8}$`)
-	httpKeyPattern     = regexp.MustCompile(`^[0-9]{4,10}$`)
-	brightnessPattern  = regexp.MustCompile(`^(auto|[0-9]{1,2}|100)$`)
-	logFilenamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+	colorPattern            = regexp.MustCompile(`^#[a-fA-F0-9]{8}$`)
+	httpKeyPattern          = regexp.MustCompile(`^[0-9]{4,10}$`)
+	accessTokenIDPattern    = regexp.MustCompile(`^[A-Za-z0-9]{8}$`)
+	brightnessPattern       = regexp.MustCompile(`^(auto|[0-9]{1,2}|100)$`)
+	applicationNamePattern  = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+	assetPathPattern        = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
+	displayElementIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+	logFilenamePattern      = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 )
 
 const (
@@ -666,6 +670,13 @@ func validateHTTPAccess(mode HTTPAccessMode, key string) error {
 	}
 	if mode != HTTPAccessKey && key != "" && !httpKeyPattern.MatchString(key) {
 		return errors.New("access key must be 4-10 digits when provided")
+	}
+	return nil
+}
+
+func validateAccessTokenShortID(shortID string) error {
+	if !accessTokenIDPattern.MatchString(shortID) {
+		return errors.New("access token short ID must contain exactly 8 ASCII letters or digits")
 	}
 	return nil
 }

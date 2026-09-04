@@ -85,6 +85,53 @@ func TestPrepareAppliesLocalAuthRequestIDAndSession(t *testing.T) {
 	}
 }
 
+func TestLocalAccessCredentialOptionsUseAPITokenHeaderAndLastWins(t *testing.T) {
+	tests := []struct {
+		name    string
+		options []Option
+		want    string
+	}{
+		{name: "token", options: []Option{WithLocalAccessToken("token-secret")}, want: "token-secret"},
+		{name: "key", options: []Option{WithLocalAccessKey("key-secret")}, want: "key-secret"},
+		{name: "token after key", options: []Option{WithLocalAccessKey("key-secret"), WithLocalAccessToken("token-secret")}, want: "token-secret"},
+		{name: "key after token", options: []Option{WithLocalAccessToken("token-secret"), WithLocalAccessKey("key-secret")}, want: "key-secret"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			receivedToken := make(chan string, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet || r.URL.Path != "/api/status" {
+					t.Errorf("request = %s %s, want GET /api/status", r.Method, r.URL.Path)
+				}
+				receivedToken <- r.Header.Get("X-API-Token")
+				writeJSON(t, w, map[string]string{"status": "ok"})
+			}))
+			defer server.Close()
+
+			client, err := NewClient(append(test.options,
+				WithBaseURL(server.URL),
+				WithHTTPClient(server.Client()),
+				WithVersionNegotiation(VersionNegotiationDisabled),
+				WithRequestIDGenerator(fixedRequestID("rid-1")),
+			)...)
+			if err != nil {
+				t.Fatalf("NewClient: %v", err)
+			}
+
+			if _, err := client.Do(context.Background(), Request{
+				Method:       http.MethodGet,
+				Path:         "/api/status",
+				ResponseMode: ResponseModeJSON,
+			}); err != nil {
+				t.Fatalf("Do: %v", err)
+			}
+			if got := <-receivedToken; got != test.want {
+				t.Fatalf("X-API-Token = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestPreparedRequestAccessorsCannotChangeExecution(t *testing.T) {
 	var receivedPath string
 	var receivedToken string
@@ -178,22 +225,28 @@ func TestRemoteModePreservesCanonicalPathAndDoesNotInjectAuth(t *testing.T) {
 	}
 }
 
-func TestRemoteModeRequiresExplicitTransportAndRejectsLocalAccessKey(t *testing.T) {
+func TestRemoteModeRequiresExplicitTransportAndRejectsLocalCredentials(t *testing.T) {
 	httpClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("unused")
 	})}
 	tests := []struct {
 		name    string
 		options []Option
+		want    string
 	}{
-		{"base URL", []Option{WithEndpointMode(EndpointRemote), WithHTTPClient(httpClient)}},
-		{"HTTP client", []Option{WithEndpointMode(EndpointRemote), WithBaseURL("http://busybar.remote.invalid")}},
-		{"local access key", []Option{WithEndpointMode(EndpointRemote), WithBaseURL("http://busybar.remote.invalid"), WithHTTPClient(httpClient), WithLocalAccessKey("1234")}},
+		{name: "base URL", options: []Option{WithEndpointMode(EndpointRemote), WithHTTPClient(httpClient)}},
+		{name: "HTTP client", options: []Option{WithEndpointMode(EndpointRemote), WithBaseURL("http://busybar.remote.invalid")}},
+		{name: "local access token", options: []Option{WithEndpointMode(EndpointRemote), WithBaseURL("http://busybar.remote.invalid"), WithHTTPClient(httpClient), WithLocalAccessToken("secret")}, want: "WithLocalAccessToken"},
+		{name: "local access key", options: []Option{WithEndpointMode(EndpointRemote), WithBaseURL("http://busybar.remote.invalid"), WithHTTPClient(httpClient), WithLocalAccessKey("1234")}, want: "WithLocalAccessToken"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := NewClient(test.options...); err == nil {
+			_, err := NewClient(test.options...)
+			if err == nil {
 				t.Fatal("NewClient succeeded")
+			}
+			if test.want != "" && !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("NewClient error = %q, want guidance containing %q", err, test.want)
 			}
 		})
 	}
@@ -243,6 +296,9 @@ func TestPrepareRejectsConflictingAuthHeaders(t *testing.T) {
 	})
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("remote conflicting auth error = %T %v, want ValidationError", err, err)
+	}
+	if !strings.Contains(err.Error(), "WithLocalAccessToken") {
+		t.Fatalf("remote conflicting auth error = %q, want WithLocalAccessToken guidance", err)
 	}
 }
 

@@ -119,8 +119,8 @@ func (c *Client) Prepare(request Request) (*PreparedRequest, error) {
 		header.Set(headerSessionID, sessionID)
 	}
 
-	if c.endpointMode == EndpointLocal && c.localAccessKey != "" {
-		header.Set(headerAPIToken, c.localAccessKey)
+	if c.endpointMode == EndpointLocal && c.localAccessToken != "" {
+		header.Set(headerAPIToken, c.localAccessToken)
 	}
 
 	if body.contentType != "" && headerValue(header, "Content-Type") == "" {
@@ -483,7 +483,7 @@ func validateCallerAuthHeaders(header http.Header) error {
 		return errors.New("authorization is not supported; transport authentication must be configured outside busylib.Client")
 	}
 	if headerValue(header, headerAPIToken) != "" {
-		return errors.New("X-API-Token must be configured with WithLocalAccessKey")
+		return errors.New("X-API-Token must be configured with WithLocalAccessToken")
 	}
 	return nil
 }

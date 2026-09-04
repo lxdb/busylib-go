@@ -103,6 +103,36 @@ type HTTPAccessInfo struct {
 	KeyValid bool           `json:"key_valid"`
 }
 
+// StoredAccessToken identifies an access token without exposing its secret.
+type StoredAccessToken struct {
+	// ShortID is the first eight token characters and identifies the token for
+	// revocation.
+	ShortID string `json:"short_id"`
+	// DisplayID is a redacted identifier formed from the token prefix and suffix.
+	DisplayID string `json:"display_id"`
+	// Name is the caller-supplied label for the token.
+	Name string `json:"name"`
+	// CreatedAt is a Unix millisecond timestamp encoded as a decimal string.
+	CreatedAt string `json:"created_at"`
+	// LastUsedAt is the latest-use Unix millisecond timestamp encoded as a
+	// decimal string. The firmware reports "0" before the token is first used.
+	LastUsedAt string `json:"last_used_at"`
+}
+
+// MintedAccessToken contains metadata for a newly created token and its
+// one-time credential.
+type MintedAccessToken struct {
+	StoredAccessToken
+	// Token is the full credential. The device returns it only when the token is
+	// created.
+	Token string `json:"token"`
+}
+
+// AccessTokensInfo contains the access tokens stored on the device.
+type AccessTokensInfo struct {
+	Tokens []StoredAccessToken `json:"tokens"`
+}
+
 // HTTPAccessMode controls access to the device HTTP API.
 type HTTPAccessMode string
 

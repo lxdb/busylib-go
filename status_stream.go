@@ -6,7 +6,7 @@ import (
 )
 
 // NewStatusStream creates a one-shot local status stream using this client's
-// address, access key, HTTP transport, timeout, and API-version cache. The
+// address, local access token, HTTP transport, timeout, and API-version cache. The
 // caller must start and eventually stop or wait for the stream.
 func (c *Client) NewStatusStream(options ...publicstream.Option) (publicstream.Stream, error) {
 	if c.endpointMode != EndpointLocal {
@@ -17,7 +17,7 @@ func (c *Client) NewStatusStream(options ...publicstream.Option) (publicstream.S
 		BaseURL:            &baseURL,
 		HTTPClient:         c.httpClient,
 		Timeout:            c.timeout,
-		LocalAccessKey:     c.localAccessKey,
+		LocalAccessToken:   c.localAccessToken,
 		VersionNegotiation: c.versionNegotiation != VersionNegotiationDisabled,
 		APISemVer:          c.APISemVer,
 		RefreshAPISemVer:   c.RefreshAPISemVer,

@@ -206,6 +206,38 @@ func (s SettingsService) SetHTTPAccess(ctx context.Context, mode HTTPAccessMode,
 	return s.client.doSuccess(ctx, http.MethodPost, "/api/access", query, nil)
 }
 
+// AccessTokens returns information about access tokens stored on the device. It
+// never returns their full credentials.
+func (s SettingsService) AccessTokens(ctx context.Context) (AccessTokensInfo, error) {
+	var out AccessTokensInfo
+	err := s.client.doJSON(ctx, http.MethodGet, "/api/access/tokens", nil, nil, &out)
+	return out, err
+}
+
+// MintAccessToken creates an access token and returns its one-time credential.
+// The device rejects this operation when the request uses an access token.
+func (s SettingsService) MintAccessToken(ctx context.Context, name string) (MintedAccessToken, error) {
+	var out MintedAccessToken
+	err := s.client.doJSON(ctx, http.MethodPost, "/api/access/tokens", nil, JSONBody(NameInfo{Name: name}), &out)
+	return out, err
+}
+
+// RevokeAccessToken removes the access token with the supplied short ID. A
+// token-authenticated client can revoke only its own token.
+func (s SettingsService) RevokeAccessToken(ctx context.Context, shortID string) error {
+	const path = "/api/access/tokens/{short_id}"
+	if err := validateAccessTokenShortID(shortID); err != nil {
+		return validationError(http.MethodDelete, path, err.Error(), err)
+	}
+	return s.client.doSuccess(ctx, http.MethodDelete, "/api/access/tokens/"+shortID, nil, nil)
+}
+
+// RevokeAllAccessTokens removes every access token stored on the device. The
+// device rejects this operation when the request uses an access token.
+func (s SettingsService) RevokeAllAccessTokens(ctx context.Context) error {
+	return s.client.doSuccess(ctx, http.MethodDelete, "/api/access/tokens", nil, nil)
+}
+
 // Name returns the device name.
 func (s SettingsService) Name(ctx context.Context) (NameInfo, error) {
 	var out NameInfo

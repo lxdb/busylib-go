@@ -16,7 +16,7 @@ type Client struct {
 	httpClient         *http.Client
 	timeout            time.Duration
 	endpointMode       EndpointMode
-	localAccessKey     string
+	localAccessToken   string
 	sessionID          string
 	requestIDGenerator func() string
 	retryPolicy        RetryPolicy
@@ -56,8 +56,8 @@ func NewClient(options ...Option) (*Client, error) {
 		if !config.httpClientConfigured {
 			return nil, errors.New("remote mode requires an explicit HTTP client")
 		}
-		if config.localAccessKey != "" {
-			return nil, errors.New("remote mode does not support a local access key")
+		if config.localAccessToken != "" {
+			return nil, errors.New("remote mode does not support WithLocalAccessToken")
 		}
 	}
 
@@ -66,7 +66,7 @@ func NewClient(options ...Option) (*Client, error) {
 		httpClient:         config.httpClient,
 		timeout:            config.timeout,
 		endpointMode:       config.endpointMode,
-		localAccessKey:     config.localAccessKey,
+		localAccessToken:   config.localAccessToken,
 		sessionID:          config.sessionID,
 		requestIDGenerator: config.requestIDGenerator,
 		retryPolicy:        config.retryPolicy,
