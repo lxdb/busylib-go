@@ -28,6 +28,7 @@ Start with the task you need to complete. The service reference lists every type
 | I want to... | Read... |
 | --- | --- |
 | Use the device through an existing MQTT connection | [Remote MQTT](integrations/remote-mqtt.md) |
+| Use the device through macOS Bluetooth Low Energy | [BLE transport](../ble/README.md) |
 | Implement `remote.Transport` | [Custom MQTT transport](integrations/custom-mqtt-transport.md) |
 | Use the raw firmware CLI over the USB network interface | [USB CLI](integrations/usb-cli.md) |
 

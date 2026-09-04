@@ -109,7 +109,8 @@ Read the [error reference](reference/errors.md) before implementing retry or rec
 ## Continue by task
 
 - Use the [service reference](reference/services.md) to find every device method.
-- Use [status streams](guides/status-streams.md) to receive changes over WebSocket.
+- Use [status streams](guides/status-streams.md) to receive changes over WebSocket, MQTT, or BLE.
 - Use [remote MQTT](integrations/remote-mqtt.md) when the device is not locally reachable.
+- Use the [BLE transport](../ble/README.md) to connect through CoreBluetooth on macOS.
 - Use [display and media](guides/display-and-media.md) to prepare and render visual or audio content.
 - Use [assets and storage](guides/assets-and-storage.md) for uploads and files.

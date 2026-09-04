@@ -1,8 +1,16 @@
 # Service reference
 
-`busylib.Client` groups the BUSY Bar HTTP API into 14 services. Create one client, choose the service that owns the task, and pass a bounded context to each method.
+`busylib.Client` groups the BUSY Bar HTTP API into 14 services. Create or obtain one client, choose the service that owns the task, and pass a bounded context to each method.
 
-All methods work with a local client. A client returned by `remote.Client.Device()` supports the same service API except for the seven firmware operations listed under [Remote MQTT restrictions](#remote-mqtt-restrictions).
+The service types, requests, and responses do not change with the transport:
+
+| Client entry point | Route to the device | Service availability |
+| --- | --- | --- |
+| `busylib.NewClient()` | Local HTTP | All root services |
+| `remote.Client.Device()` | Firmware MQTT HTTP proxy | All root services except the seven operations under [Remote MQTT restrictions](#remote-mqtt-restrictions) |
+| `ble.Client.Device()` | Raw HTTP over the Nordic UART Service | All root services, subject to the [BLE HTTP transport contract](../../ble/README.md#http-transport-contract) |
+
+`ble.Client.Device()` returns the same `*busylib.Client` used for local HTTP. The BLE module changes the HTTP transport; it does not duplicate services or translate individual service methods into BLE-specific commands.
 
 ## System
 

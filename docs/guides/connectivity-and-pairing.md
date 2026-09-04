@@ -58,6 +58,8 @@ The `enabled`, `connectable`, and `connected` states all mean that BLE is active
 
 `Disable` turns off BLE support. `RemovePairing` removes the saved pairing and requires clients to pair again.
 
+These methods control BLE on the BUSY Bar; they do not create a host BLE connection. The optional [BLE transport](../../ble/README.md) scans and connects from macOS. It deliberately does not call `Enable`, `RemovePairing`, or a hidden pair-mode operation. Use a LAN or USB client to prepare the device when required, then let macOS own its permission and pairing prompts.
+
 ## Link a remote account
 
 ```go

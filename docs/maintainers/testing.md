@@ -6,26 +6,31 @@
 
 | Command | Evidence produced | External requirements |
 | --- | --- | --- |
-| `scripts/verify.sh quick` | Current-toolchain tests and vet for both modules | Go toolchain and module cache or network |
+| `scripts/verify.sh quick` | Current-toolchain tests and vet for all modules | Go toolchain and module cache or network |
 | `scripts/verify.sh docs` | Documentation structure, links, API coverage, and examples | Go toolchain |
 | `scripts/verify.sh minimum-root` | Root tests with the minimum Go toolchain and CGO disabled | Minimum Go toolchain |
 | `scripts/verify.sh minimum-paho` | Adapter tests with its minimum Go toolchain and CGO disabled | Minimum Go toolchain |
+| `scripts/verify.sh minimum-ble` | BLE public API and protocol tests with its minimum Go toolchain and CGO disabled | Minimum Go toolchain |
+| `scripts/verify.sh minimum-ble-darwin` | CoreBluetooth tests and vet with the BLE minimum Go toolchain and CGO enabled | macOS, minimum Go toolchain, and Apple tools |
 | `scripts/verify.sh current-root` | Root tests with the current supported toolchain | Current Go toolchain |
-| `scripts/verify.sh race` | Race-enabled tests for both modules | CGO-capable Go environment |
-| `scripts/verify.sh vet` | Standalone vet for both modules | Go toolchain |
+| `scripts/verify.sh current-ble` | BLE tests and vet, including CoreBluetooth and device-test compilation on macOS | Current Go toolchain; CGO and Apple tools on macOS |
+| `scripts/verify.sh race` | Race-enabled tests for all modules | CGO-capable Go environment |
+| `scripts/verify.sh vet` | Standalone vet for all modules | Go toolchain |
 | `scripts/verify.sh coverage` | Public-package coverage floor | Go toolchain |
-| `scripts/verify.sh lint` | Pinned linter for both modules | Tool download or cache |
+| `scripts/verify.sh lint` | Pinned linter for all modules | Tool download or cache |
 | `scripts/verify.sh repository` | Shell syntax, Git whitespace, and workflow syntax | Git and tool download or cache |
 | `scripts/verify.sh metadata` | Checksums and tidy module metadata without changing the checkout | Module cache or network |
-| `scripts/verify.sh security` | Pinned vulnerability scan for both modules | Vulnerability data access |
+| `scripts/verify.sh security` | Pinned vulnerability scan for all modules | Vulnerability data access |
 | `scripts/verify.sh generated` | Generated protobuf and focused protocol checks | `protoc` and protobuf source checkout |
 | `scripts/verify.sh firmware` | Pinned firmware contract checks | Firmware checkout |
 | `scripts/verify.sh integration` | Broker-backed Paho tests and device-tag compilation | Docker and pinned Mosquitto image |
 | `scripts/verify.sh fuzz` | Scheduled frame fuzz target | Go toolchain and configured time |
 | `scripts/verify.sh history` | Conventional Commit history after bootstrap | Git history |
 | `scripts/verify.sh device` | Physical HTTP, WebSocket, media, and USB behavior | BUSY Bar, both addresses, and expected firmware/API versions |
+| `scripts/verify.sh ble-device` | Physical BLE API, status stream, image transfer, and bonded reconnect | BUSY Bar and a CoreBluetooth identifier; optional write opt-in |
 | `scripts/verify.sh all` | Every device-free local gate | All device-free requirements above |
-| `scripts/verify.sh release` | All gates followed by physical-device tests | Complete release environment |
+| `scripts/verify.sh release` | All gates followed by local and USB physical-device tests | Complete root/Paho release environment and physical-device inputs |
+| `scripts/verify.sh ble-release` | All gates followed by minimum-Go CoreBluetooth and complete BLE qualification | Complete macOS BLE release environment, CoreBluetooth identifier, and BLE write opt-in |
 
 ## Run complete device-free verification
 
@@ -53,11 +58,21 @@ Set `BUSYBAR_ACCESS_KEY` only when the local HTTP API requires a credential; the
 
 A hosted build can compile device-tagged tests but cannot prove device reachability, firmware compatibility, or media behavior. Record the device model, firmware version, exact command, and result without credentials or device tokens. See the [device test README](../../integration/device/README.md) for the test boundary.
 
+Run the BLE checks separately with the CoreBluetooth identifier returned by `ble.Scan`. The test does not remove or create a pairing:
+
+```sh
+BUSYBAR_BLE_IDENTIFIER='<corebluetooth-uuid>' scripts/verify.sh ble-device
+```
+
+Set `BUSYBAR_BLE_WRITE_TEST=1` to include a temporary upload/download round-trip of the captured front-display image. The test removes its application asset after the check. Without that variable, the BLE data-plane test remains read-only.
+
 ## Write useful tests
 
 Test observable contracts. Use exact counts when the contract defines an exact set, synchronization barriers for concurrent behavior, and deadlines only as failure bounds. A sleep does not prove that concurrent work completed.
 
-For remote transports, cover connection loss, reconnection, restored subscriptions, oversized messages, slow consumers, and concurrent close. For one-shot streams, cover start, terminal completion, cleanup errors, repeated `Wait`, and cancellation.
+For remote and BLE transports, cover connection loss, reconnection, restored subscriptions, oversized messages, slow consumers, and concurrent close. For one-shot streams, cover start, terminal completion, cleanup errors, repeated `Wait`, and cancellation.
+
+BLE physical tests must not remove pairing automatically. Record fresh-pair evidence separately from saved-bond reconnect. A hosted macOS build proves only compilation and device-free behavior.
 
 ## Understand GitHub-only evidence
 

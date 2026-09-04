@@ -15,16 +15,23 @@ Use the smallest package that owns the task. The root module does not require a 
 | [`snapshot`](https://pkg.go.dev/github.com/lxdb/busylib-go/snapshot) | Collect best-effort device state and merge typed stream updates without owning transport lifecycle. | `Collect`, `NewStore` |
 | [`usb`](https://pkg.go.dev/github.com/lxdb/busylib-go/usb) | Access the raw firmware CLI through the USB network interface. | `NewClient`, `Client.Commands`, [USB CLI](../integrations/usb-cli.md) |
 | [`pahotransport`](https://pkg.go.dev/github.com/lxdb/busylib-go/pahotransport) | Optional, independently versioned Eclipse Paho MQTT 5 implementation of `remote.Transport`. | `Dial`, [Remote MQTT](../integrations/remote-mqtt.md) |
+| [`ble`](https://pkg.go.dev/github.com/lxdb/busylib-go/ble) | Optional, independently versioned macOS CoreBluetooth transport for the root device API and FFE1 status stream. | `Scan`, `Connect`, [BLE transport](../../ble/README.md) |
 | [`proto/*`](https://pkg.go.dev/github.com/lxdb/busylib-go/proto/statepb) | Generated protocol values retained by stream and frame types. | Use through typed `stream.Update` or `frame.Frame` values unless implementing protocol-level tooling. |
 
 ## Module boundary
 
-The root module is `github.com/lxdb/busylib-go`. The Paho adapter is the separate module `github.com/lxdb/busylib-go/pahotransport`. Each module declares its own minimum Go version and dependencies.
+The root module is `github.com/lxdb/busylib-go`. Paho and BLE are separate optional modules. Each module declares its own minimum Go version and dependencies.
 
 Install the Paho module only when the application selects Eclipse Paho:
 
 ```sh
 go get github.com/lxdb/busylib-go/pahotransport@latest
+```
+
+Install the BLE module only for CoreBluetooth support:
+
+```sh
+go get github.com/lxdb/busylib-go/ble@latest
 ```
 
 The remote client accepts any implementation of `remote.Transport`. Read [Custom MQTT transport](../integrations/custom-mqtt-transport.md) before implementing one.
