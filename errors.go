@@ -215,3 +215,7 @@ func wrapProtocolError(method, path, requestID string, body []byte, err error) *
 		Err:       err,
 	}
 }
+
+func fieldError(field string, err error) error {
+	return fmt.Errorf("%s: %w", field, err)
+}
