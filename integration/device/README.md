@@ -19,10 +19,14 @@ Set `BUSYBAR_BASE_URL` to the local device URL. Set `BUSYBAR_ACCESS_KEY` only wh
 ```sh
 BUSYBAR_BASE_URL=http://device-address \
 BUSYBAR_USB_ADDRESS=device-usb-address \
+BUSYBAR_EXPECTED_FIRMWARE_VERSION=1.2.3 \
+BUSYBAR_EXPECTED_API_VERSION=27.5.0 \
 scripts/verify.sh device
 ```
 
-The harness runs local HTTP snapshot, WebSocket lifecycle, media upload/read-back/cleanup, and USB checks. It requires both addresses so release verification cannot pass through skipped tests. Set `BUSYBAR_ACCESS_KEY` only when the device requires it.
+The harness runs local HTTP snapshot, WebSocket lifecycle, access-token authorization and self-revocation, nested media upload/read-back/cleanup, append, XPM layering, selective-clear, and USB checks. It requires both addresses and both expected versions so release verification cannot pass through skipped or mismatched device tests. Set `BUSYBAR_ACCESS_KEY` only when the device requires a credential; the harness sends it as an API token.
+
+The harness runs selective clear in a dedicated final process after the other local and USB checks. Firmware 1.2.3 can behave incorrectly or restart because its internal element-ID pointer list is unterminated. The test verifies the requested layer change and asserts that the device boot time did not change.
 
 ## Test USB CLI access
 

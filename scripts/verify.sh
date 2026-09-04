@@ -283,12 +283,23 @@ run_device() {
     echo "BUSYBAR_USB_ADDRESS is required for physical USB verification" >&2
     exit 2
   fi
-  phase "physical local HTTP and WebSocket tests"
+  if [[ -z "${BUSYBAR_EXPECTED_FIRMWARE_VERSION:-}" ]]; then
+    echo "BUSYBAR_EXPECTED_FIRMWARE_VERSION is required for physical local-device verification" >&2
+    exit 2
+  fi
+  if [[ -z "${BUSYBAR_EXPECTED_API_VERSION:-}" ]]; then
+    echo "BUSYBAR_EXPECTED_API_VERSION is required for physical local-device verification" >&2
+    exit 2
+  fi
+  phase "physical local HTTP and WebSocket tests except selective clear"
   root_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly -count=1 -tags=device \
-    -run TestLocalDevice -v ./integration/device
+    -run '^TestLocalDevice' -skip '^TestLocalDeviceSelectiveClear$' -v ./integration/device
   phase "physical USB tests"
   root_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly -count=1 -tags=device \
-    -run TestUSBDevice -v ./integration/device
+    -run '^TestUSBDevice' -v ./integration/device
+  phase "physical selective-clear test (final; firmware 1.2.3 restart risk)"
+  root_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly -count=1 -tags=device \
+    -run '^TestLocalDeviceSelectiveClear$' -v ./integration/device
 }
 
 run_all() {
