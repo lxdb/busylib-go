@@ -26,6 +26,8 @@ go get github.com/lxdb/busylib-go/ble@latest
 
 `NewClient` connects to the BUSY Bar USB-network endpoint at `http://10.0.4.20` by default.
 
+Before running the program, connect the BUSY Bar over USB and open <http://10.0.4.20> to confirm that the device is reachable. If the device UI does not load, resolve the USB-network connection before troubleshooting the Go client.
+
 ```go
 package main
 
@@ -63,6 +65,7 @@ The request succeeds when the device is reachable and returns a compatible statu
 | --- | --- |
 | Connect a device and make the first request | [Getting started](docs/getting-started.md) |
 | Find a client service or method | [Service reference](docs/reference/services.md) |
+| Diagnose request, API, stream, MQTT, or BLE failures | [Error reference](docs/reference/errors.md) |
 | Inspect status or change device settings | [Inspect and configure](docs/guides/inspect-and-configure.md) |
 | Render content or play audio | [Display and media](docs/guides/display-and-media.md) |
 | Upload assets or manage device files | [Assets and storage](docs/guides/assets-and-storage.md) |
