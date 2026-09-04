@@ -14,8 +14,9 @@ import (
 
 const syntheticBaseURL = "http://busybar.remote.invalid"
 
-// Client exposes the ordinary device client over the firmware's MQTT HTTP
-// protocol and owns the optional remote status stream created from it.
+// Client exposes the root BUSY Bar client over the firmware's MQTT HTTP
+// protocol. It owns its HTTP-response subscription and any status stream that
+// it creates, but it does not own the supplied Transport.
 type Client struct {
 	transport Transport
 	config    clientConfig
@@ -29,7 +30,9 @@ type Client struct {
 	closeErr  error
 }
 
-// NewClient creates a remote wrapper around a caller-owned MQTT 5 transport.
+// NewClient creates a remote client over a caller-owned MQTT 5 transport.
+// sessionID must be one safe MQTT topic segment. Unless WithClientID supplies a
+// stable value, NewClient generates a random client ID for response topics.
 func NewClient(transport Transport, sessionID string, options ...Option) (*Client, error) {
 	if transport == nil {
 		return nil, errors.New("remote transport must not be nil")
@@ -78,11 +81,13 @@ func NewClient(transport Transport, sessionID string, options ...Option) (*Clien
 	}, nil
 }
 
-// Device returns the ordinary BUSY Bar client backed by remote MQTT HTTP.
+// Device returns the BUSY Bar HTTP API client backed by remote MQTT. Calls made
+// through the returned client fail after Close.
 func (c *Client) Device() *busylib.Client { return c.device }
 
-// NewStatusStream creates the sole active remote MQTT status stream for this
-// wrapper. Stop the returned stream before creating another one.
+// NewStatusStream creates the client's sole active remote MQTT status stream.
+// The caller must start and eventually stop or wait for the stream. Another
+// stream can be created after the current stream finishes.
 func (c *Client) NewStatusStream(options ...stream.Option) (stream.Stream, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -106,8 +111,9 @@ func (c *Client) NewStatusStream(options ...stream.Option) (stream.Stream, error
 	return statusStream, nil
 }
 
-// Close stops client-owned subscriptions. It never closes the caller's
-// Transport.
+// Close stops the active stream and all client-owned subscriptions. It never
+// closes the caller's Transport. Concurrent and repeated calls return the same
+// completion result.
 func (c *Client) Close() error {
 	c.closeOnce.Do(func() { c.closeErr = c.close() })
 	return c.closeErr

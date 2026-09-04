@@ -17,16 +17,26 @@ import (
 // Stream is a one-shot BUSY Bar status-stream subscription. Local WebSocket
 // and remote MQTT implementations share this lifecycle contract.
 type Stream interface {
-	// Start opens the one-shot stream. A second call returns ErrAlreadyStarted.
+	// Start opens the one-shot stream and returns after the initial connection is
+	// established or fails. The context controls the stream's lifetime. A second
+	// call returns ErrAlreadyStarted.
 	Start(context.Context) error
-	// Stop requests clean shutdown and waits for owned resources to close.
+	// Stop requests shutdown, waits for owned resources to close, and returns
+	// the same completion result as Wait. Stop is valid before Start.
 	Stop() error
+	// RequestSnapshot asks a connected local stream to send its current state.
+	// Remote streams return ErrSnapshotUnsupported.
 	RequestSnapshot(context.Context) error
+	// Messages returns every received transport message in order. The channel
+	// closes when the stream finishes.
 	Messages() <-chan Message
+	// Statuses returns lifecycle snapshots. A slow reader can miss intermediate
+	// values; the channel closes when the stream finishes.
 	Statuses() <-chan Status
+	// Status returns the latest lifecycle snapshot.
 	Status() Status
 	// Wait returns the stable terminal or cleanup error. Before Start or Stop it
-	// returns ErrNotStarted.
+	// returns ErrNotStarted. Repeated calls return the same result.
 	Wait() error
 }
 
@@ -41,8 +51,9 @@ const (
 )
 
 // Message preserves one transport message together with its decoded state and
-// ordered product updates. Raw is retained for protocol diagnostics. Text is
-// used by the local WebSocket transport; remote MQTT messages are binary.
+// ordered product updates. Its byte slices and protobuf messages are owned by
+// the caller. Raw is retained for protocol diagnostics. Text is used by the
+// local WebSocket transport; remote MQTT messages are binary.
 type Message struct {
 	Kind        MessageKind
 	ReceivedAt  time.Time
@@ -96,8 +107,9 @@ const (
 	DataStale DataStatus = "stale"
 )
 
-// Status is the current stream lifecycle snapshot. Statuses may coalesce
-// intermediate values; Status always returns the latest value.
+// Status is one stream lifecycle snapshot. ConnectedAt and LastStateAt are zero
+// until the corresponding event occurs. Statuses may coalesce intermediate
+// values; Stream.Status always returns the latest value.
 type Status struct {
 	Lifecycle   Lifecycle
 	Access      AccessStatus
@@ -297,7 +309,8 @@ func (u TimerProfilesUpdate) Proto() proto.Message { return u.Value }
 // Proto returns the retained unknown protobuf payload.
 func (u UnknownUpdate) Proto() proto.Message { return u.Value }
 
-// DeviceError is an error reported inside a firmware state message.
+// DeviceError is an error reported inside a firmware state message. Raw retains
+// the complete generated protobuf value.
 type DeviceError struct {
 	Cause    errorpb.Cause
 	Severity errorpb.Severity

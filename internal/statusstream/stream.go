@@ -22,6 +22,7 @@ const (
 
 var errConsumerTooSlow = errors.New("status stream consumer is too slow")
 
+// Config contains the root-client dependencies required by the local stream.
 type Config struct {
 	BaseURL            *url.URL
 	HTTPClient         *http.Client
@@ -32,6 +33,7 @@ type Config struct {
 	RefreshAPISemVer   func(context.Context) (string, error)
 }
 
+// Stream implements the public one-shot stream lifecycle over WebSocket.
 type Stream struct {
 	config  Config
 	options publicstream.Options
@@ -43,6 +45,7 @@ type Stream struct {
 	writeMu sync.Mutex
 }
 
+// New validates config and creates an idle local status stream.
 func New(config Config, options ...publicstream.Option) (*Stream, error) {
 	resolved, err := publicstream.ResolveOptions(options...)
 	if err != nil {
@@ -66,11 +69,19 @@ func New(config Config, options ...publicstream.Option) (*Stream, error) {
 	return instance, nil
 }
 
+// Messages returns the ordered message channel.
 func (s *Stream) Messages() <-chan publicstream.Message { return s.state.Messages() }
-func (s *Stream) Statuses() <-chan publicstream.Status  { return s.state.Statuses() }
-func (s *Stream) Status() publicstream.Status           { return s.state.Status() }
-func (s *Stream) Wait() error                           { return s.state.Wait() }
 
+// Statuses returns the coalescing lifecycle-status channel.
+func (s *Stream) Statuses() <-chan publicstream.Status { return s.state.Statuses() }
+
+// Status returns the latest lifecycle status.
+func (s *Stream) Status() publicstream.Status { return s.state.Status() }
+
+// Wait returns the stream's stable completion result.
+func (s *Stream) Wait() error { return s.state.Wait() }
+
+// Start connects the one-shot stream and starts its receive loop.
 func (s *Stream) Start(ctx context.Context) error {
 	if ctx == nil {
 		return errors.New("status stream context must not be nil")
@@ -107,6 +118,7 @@ func (s *Stream) Start(ctx context.Context) error {
 	return nil
 }
 
+// Stop requests shutdown and returns the stable completion result.
 func (s *Stream) Stop() error {
 	s.mu.Lock()
 	if s.state.StopBeforeStart() {
@@ -123,6 +135,7 @@ func (s *Stream) Stop() error {
 	return s.Wait()
 }
 
+// RequestSnapshot asks a connected stream to send all current state.
 func (s *Stream) RequestSnapshot(ctx context.Context) error {
 	if ctx == nil {
 		return errors.New("status stream context must not be nil")

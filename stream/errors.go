@@ -16,9 +16,9 @@ var ErrNotStarted = errors.New("status stream has not been started")
 // ErrAlreadyStarted reports a second attempt to start a one-shot stream.
 var ErrAlreadyStarted = errors.New("status stream has already been started")
 
-// Error is a status-stream transport, lifecycle, or protocol failure. Path is
-// a query-free WebSocket path or an MQTT topic, so credentials cannot leak
-// through errors.
+// Error is a status-stream transport, lifecycle, or protocol failure. Use
+// errors.As to inspect it and errors.Is to inspect Err. Path is a query-free
+// WebSocket path or an MQTT topic; it never contains URL query parameters.
 type Error struct {
 	Operation  string
 	Path       string

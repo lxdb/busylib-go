@@ -6,7 +6,8 @@ import (
 )
 
 // NewStatusStream creates a one-shot local status stream using this client's
-// address, access key, HTTP transport, timeout, and API-version cache.
+// address, access key, HTTP transport, timeout, and API-version cache. The
+// caller must start and eventually stop or wait for the stream.
 func (c *Client) NewStatusStream(options ...publicstream.Option) (publicstream.Stream, error) {
 	if c.endpointMode != EndpointLocal {
 		return nil, validationError("GET", "/api/status/ws", "local WebSocket status streaming is unavailable in remote mode", nil)

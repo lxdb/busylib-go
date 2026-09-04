@@ -3,6 +3,7 @@ package remote_test
 import (
 	"context"
 	"errors"
+	"log"
 
 	"github.com/lxdb/busylib-go/remote"
 )
@@ -20,8 +21,13 @@ func (exampleTransport) Subscribe(context.Context, remote.SubscriptionRequest) (
 func ExampleNewClient() {
 	client, err := remote.NewClient(exampleTransport{}, "firmware-session", remote.WithClientID("example"))
 	if err != nil {
+		log.Print(err)
 		return
 	}
-	defer func() { _ = client.Close() }()
+	defer func() {
+		if err := client.Close(); err != nil {
+			log.Print(err)
+		}
+	}()
 	_ = client.Device()
 }

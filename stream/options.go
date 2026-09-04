@@ -12,23 +12,27 @@ const (
 )
 
 // ReconnectPolicy controls the bounded dial attempts made for an initial
-// connection or after an established connection is lost.
+// connection or after an established connection is lost. MaxAttempts includes
+// the first attempt; Delay is the fixed wait between attempts.
 type ReconnectPolicy struct {
 	MaxAttempts int
 	Delay       time.Duration
 }
 
-// Options contains the small set of status-stream policies callers can tune.
-// Zero values are replaced by the documented defaults.
+// Options contains status-stream policies. ResolveOptions replaces zero values
+// with the defaults: a 5-second stale threshold and up to five connection
+// attempts separated by 1 second.
 type Options struct {
 	StaleAfter time.Duration
 	Reconnect  ReconnectPolicy
 }
 
-// Option configures a local or remote status stream.
+// Option configures a local or remote status stream. ResolveOptions ignores nil
+// options.
 type Option func(*Options) error
 
-// DefaultOptions returns the status-stream defaults.
+// DefaultOptions returns a 5-second stale threshold and a reconnect policy of
+// five attempts separated by 1 second.
 func DefaultOptions() Options {
 	return Options{
 		StaleAfter: defaultStaleAfter,
@@ -51,7 +55,8 @@ func WithStaleAfter(duration time.Duration) Option {
 	}
 }
 
-// WithReconnectPolicy changes the bounded connection retry policy.
+// WithReconnectPolicy changes the bounded connection retry policy. MaxAttempts
+// must be positive, and Delay must not be negative.
 func WithReconnectPolicy(policy ReconnectPolicy) Option {
 	return func(options *Options) error {
 		if policy.MaxAttempts <= 0 {
@@ -65,7 +70,7 @@ func WithReconnectPolicy(policy ReconnectPolicy) Option {
 	}
 }
 
-// ResolveOptions applies options to the defaults.
+// ResolveOptions applies configurers to DefaultOptions in order.
 func ResolveOptions(configurers ...Option) (Options, error) {
 	options := DefaultOptions()
 	for _, configure := range configurers {

@@ -11,7 +11,9 @@ var ErrClosed = errors.New("remote client is closed")
 // ErrMessageTooLarge reports an MQTT payload that exceeds the configured limit.
 var ErrMessageTooLarge = errors.New("remote message exceeds the configured limit")
 
-// Error describes a remote MQTT transport failure.
+// Error describes a remote MQTT transport failure. Use errors.As to inspect it
+// and errors.Is to inspect the wrapped cause. Route contains an HTTP path or
+// MQTT topic, never a payload.
 type Error struct {
 	Operation string
 	Route     string

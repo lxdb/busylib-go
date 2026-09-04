@@ -9,18 +9,19 @@ import (
 const (
 	defaultRequestTimeout = 10 * time.Second
 	defaultStreamLease    = 60 * time.Second
-	// DefaultMaxMessageBytes bounds MQTT payloads copied in memory.
+	// DefaultMaxMessageBytes is the 1 MiB limit applied to MQTT payloads by
+	// default.
 	DefaultMaxMessageBytes int64 = 1 << 20
 )
 
-// MessageLimit configures the firmware stream publisher's packet rate.
-// The zero value leaves the publisher unlimited.
+// MessageLimit configures the firmware stream publisher's packet rate. A zero
+// value leaves the publisher unlimited; otherwise both fields must be positive.
 type MessageLimit struct {
 	MaxCount uint32
 	Interval time.Duration
 }
 
-// Option configures a remote Client.
+// Option configures a remote Client. NewClient ignores nil options.
 type Option func(*clientConfig) error
 
 type clientConfig struct {
@@ -41,7 +42,8 @@ func defaultConfig() clientConfig {
 	}
 }
 
-// WithMaxMessageBytes changes the maximum MQTT payload size.
+// WithMaxMessageBytes changes the positive MQTT payload limit for HTTP
+// responses and status-stream messages.
 func WithMaxMessageBytes(maximum int64) Option {
 	return func(config *clientConfig) error {
 		if maximum <= 0 {
@@ -52,7 +54,8 @@ func WithMaxMessageBytes(maximum int64) Option {
 	}
 }
 
-// WithClientID sets the MQTT topic segment that distinguishes this client.
+// WithClientID sets the safe MQTT topic segment that distinguishes this client.
+// NewClient generates a random ID when this option is absent.
 func WithClientID(clientID string) Option {
 	return func(config *clientConfig) error {
 		if err := validateTopicSegment("client ID", clientID); err != nil {
@@ -63,7 +66,8 @@ func WithClientID(clientID string) Option {
 	}
 }
 
-// WithRequestTimeout sets the root device client's request timeout.
+// WithRequestTimeout sets the positive timeout for device API requests and
+// remote stream setup operations. The default is 10 seconds.
 func WithRequestTimeout(timeout time.Duration) Option {
 	return func(config *clientConfig) error {
 		if timeout <= 0 {
@@ -74,7 +78,8 @@ func WithRequestTimeout(timeout time.Duration) Option {
 	}
 }
 
-// WithRequestSessionID sets the optional x-session-id HTTP request header.
+// WithRequestSessionID sets the optional x-session-id header inside tunneled
+// HTTP requests. It is distinct from the firmware session ID in MQTT topics.
 func WithRequestSessionID(sessionID string) Option {
 	return func(config *clientConfig) error {
 		if strings.ContainsAny(sessionID, "\r\n") {
@@ -85,8 +90,9 @@ func WithRequestSessionID(sessionID string) Option {
 	}
 }
 
-// WithStreamLease sets the firmware stream lease and renewal interval. The
-// firmware's MQTT property is expressed in whole seconds.
+// WithStreamLease sets the firmware stream lease. The client renews the lease
+// halfway through its duration. The value must be a positive whole number of
+// seconds; the default is 60 seconds.
 func WithStreamLease(lease time.Duration) Option {
 	return func(config *clientConfig) error {
 		if lease <= 0 || lease%time.Second != 0 {
@@ -98,6 +104,7 @@ func WithStreamLease(lease time.Duration) Option {
 }
 
 // WithStreamMessageLimit configures an optional firmware stream rate limit.
+// Set both fields to zero to disable the limit.
 func WithStreamMessageLimit(limit MessageLimit) Option {
 	return func(config *clientConfig) error {
 		if limit.MaxCount == 0 && limit.Interval == 0 {

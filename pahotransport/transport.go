@@ -101,6 +101,7 @@ func Dial(ctx context.Context, config autopaho.ClientConfig) (*Transport, error)
 }
 
 // Close terminates subscriptions and disconnects the owned Paho manager.
+// Concurrent and repeated calls return the same result.
 func (t *Transport) Close() error {
 	if t == nil || t.manager == nil || t.lifetime == nil || t.cancel == nil || t.done == nil {
 		return remote.ErrClosed
@@ -252,7 +253,8 @@ func (t *Transport) route(received paho.PublishReceived) (bool, error) {
 	return true, nil
 }
 
-// Publish sends one remote protocol message.
+// Publish sends one remote protocol message. It copies payload and correlation
+// data before passing them to Paho.
 func (t *Transport) Publish(ctx context.Context, message remote.Message) error {
 	if t == nil || t.manager == nil || t.isClosed() {
 		return remote.ErrClosed
@@ -278,7 +280,9 @@ func (t *Transport) Publish(ctx context.Context, message remote.Message) error {
 	return err
 }
 
-// Subscribe creates one exact-topic subscription.
+// Subscribe creates one exact-topic subscription. It validates
+// MaxPayloadBytes and rejects an oversized payload before copying or delivering
+// it. Close on the returned subscription unblocks Receive.
 func (t *Transport) Subscribe(ctx context.Context, request remote.SubscriptionRequest) (remote.Subscription, error) {
 	if t == nil || t.manager == nil || t.isClosed() {
 		return nil, remote.ErrClosed

@@ -2,6 +2,8 @@ package pahotransport_test
 
 import (
 	"context"
+	"errors"
+	"log"
 	"net/url"
 	"time"
 
@@ -16,6 +18,7 @@ func ExampleDial() {
 	defer cancel()
 	broker, err := url.Parse("mqtt://broker.example:1883")
 	if err != nil {
+		log.Print(err)
 		return
 	}
 	transport, err := pahotransport.Dial(ctx, autopaho.ClientConfig{
@@ -25,14 +28,21 @@ func ExampleDial() {
 		},
 	})
 	if err != nil {
+		log.Print(err)
 		return
 	}
-	defer func() { _ = transport.Close() }()
 
 	client, err := remote.NewClient(transport, "firmware-session", remote.WithClientID("example"))
 	if err != nil {
+		log.Print(errors.Join(err, transport.Close()))
 		return
 	}
-	defer func() { _ = client.Close() }()
+	defer func() {
+		clientErr := client.Close()
+		transportErr := transport.Close()
+		if err := errors.Join(clientErr, transportErr); err != nil {
+			log.Print(err)
+		}
+	}()
 	_ = client.Device()
 }
