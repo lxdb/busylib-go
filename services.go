@@ -417,12 +417,21 @@ func (s AssetsService) DeleteApplicationAssets(ctx context.Context, applicationN
 	return s.client.doSuccess(ctx, http.MethodDelete, "/api/assets/upload", url.Values{"application_name": []string{applicationName}}, nil)
 }
 
-// Write replaces a device file with content from the supplied body.
+// Write stores content from the supplied body. Append nil omits the append
+// option; non-nil values explicitly select append or replacement behavior.
 func (s StorageService) Write(ctx context.Context, request WriteStorageFileRequest) error {
 	if err := request.Validate(); err != nil {
 		return validationError(http.MethodPost, "/api/storage/write", err.Error(), err)
 	}
-	return s.client.doSuccess(ctx, http.MethodPost, "/api/storage/write", url.Values{"path": []string{request.Path}}, request.Body)
+	query := url.Values{"path": []string{request.Path}}
+	if request.Append != nil {
+		appendValue := "0"
+		if *request.Append {
+			appendValue = "1"
+		}
+		query.Set("append", appendValue)
+	}
+	return s.client.doSuccess(ctx, http.MethodPost, "/api/storage/write", query, request.Body)
 }
 
 // WriteFile uploads a local file to the selected device path.

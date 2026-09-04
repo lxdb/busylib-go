@@ -445,10 +445,14 @@ type UploadAssetRequest struct {
 	Body            Body
 }
 
-// WriteStorageFileRequest writes a body to a device storage path.
+// WriteStorageFileRequest writes a body to a device storage path. A nil Append
+// value and a pointer to false both select replacement behavior. A non-nil
+// value is sent to the firmware so callers can distinguish an omitted option
+// from append=0.
 type WriteStorageFileRequest struct {
-	Path string
-	Body Body
+	Path   string
+	Body   Body
+	Append *bool
 }
 
 // StorageList contains the entries in a device storage directory.
