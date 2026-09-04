@@ -26,6 +26,7 @@ usage: scripts/verify.sh <command>
 
 commands:
   quick          Run current-toolchain tests and vet for both modules.
+  docs           Check documentation structure, API coverage, links, and example compilation.
   minimum-root   Test the root module with its minimum Go toolchain and CGO off.
   minimum-paho   Test the Paho module with its minimum Go toolchain and CGO off.
   current-root   Test the root module on the current supported Go toolchain.
@@ -90,6 +91,15 @@ run_quick() {
   phase "Paho tests and vet (${CURRENT_GO_TOOLCHAIN})"
   paho_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly ./...
   paho_go "${CURRENT_GO_TOOLCHAIN}" vet -mod=readonly ./...
+}
+
+run_docs() {
+  phase "documentation contracts"
+  root_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly ./internal/docscheck
+  phase "root examples (compile all; run examples with expected output)"
+  root_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly -run '^Example' ./...
+  phase "Paho examples (compile all; run examples with expected output)"
+  paho_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly -run '^Example' ./...
 }
 
 run_minimum_root() {
@@ -283,6 +293,7 @@ run_device() {
 
 run_all() {
   run_repository
+  run_docs
   run_history
   run_minimum_root
   run_minimum_paho
@@ -301,6 +312,7 @@ run_all() {
 
 case "${1:-}" in
   quick) run_quick ;;
+  docs) run_docs ;;
   minimum-root) run_minimum_root ;;
   minimum-paho) run_minimum_paho ;;
   current-root) run_current_root ;;
