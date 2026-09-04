@@ -11,4 +11,5 @@ cleanup() {
 trap cleanup EXIT
 
 BUSYLIB_GO_PROTO_OUT="${TMP_DIR}" "${ROOT}/scripts/generate-protobuf.sh"
-diff -ru "${ROOT}/proto" "${TMP_DIR}/proto"
+# Package documentation is maintained by hand; compare generated files only.
+diff -ru -x doc.go "${ROOT}/proto" "${TMP_DIR}/proto"
