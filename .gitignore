@@ -3,3 +3,5 @@
 /busylib-go.test
 *.prof
 .DS_Store
+/docs/okf/
+/experiments/ble-poc/
