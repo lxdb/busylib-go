@@ -3,7 +3,6 @@ package busylib
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -280,7 +279,7 @@ func (s DisplayService) Draw(ctx context.Context, request DisplayElements) error
 // An empty application name removes all rendered elements.
 func (s DisplayService) Clear(ctx context.Context, applicationName string) error {
 	if applicationName != "" {
-		if err := validateDisplayApplicationName(applicationName); err != nil {
+		if err := validateApplicationName(applicationName); err != nil {
 			return validationError(http.MethodDelete, "/api/display/draw", err.Error(), err)
 		}
 	}
@@ -289,6 +288,24 @@ func (s DisplayService) Clear(ctx context.Context, applicationName string) error
 		query.Set("application_name", applicationName)
 	}
 	return s.client.doSuccess(ctx, http.MethodDelete, "/api/display/draw", query, nil)
+}
+
+// ClearElements removes selected rendered elements. A non-empty ApplicationName
+// limits removal to that application. An empty ApplicationName applies the
+// ElementIDs filter across all applications. ApplicationName is sent as a query
+// parameter because firmware 1.2.3 ignores it in the request body.
+//
+// WARNING: Firmware 1.2.3 has an unterminated internal element_ids pointer
+// array. This operation may behave incorrectly or restart the device.
+func (s DisplayService) ClearElements(ctx context.Context, request ClearDisplayElementsRequest) error {
+	if err := validateClearDisplayElementsRequest(request); err != nil {
+		return validationError(http.MethodDelete, "/api/display/draw", err.Error(), err)
+	}
+	query := url.Values{}
+	if request.ApplicationName != "" {
+		query.Set("application_name", request.ApplicationName)
+	}
+	return s.client.doSuccess(ctx, http.MethodDelete, "/api/display/draw", query, JSONBody(request))
 }
 
 // Screen returns the uncompressed pixels of the selected display. Pass the
@@ -394,11 +411,7 @@ func (s AssetsService) UploadFile(ctx context.Context, applicationName, file, lo
 // DeleteApplicationAssets permanently removes all assets owned by one
 // application.
 func (s AssetsService) DeleteApplicationAssets(ctx context.Context, applicationName string) error {
-	if err := validateAssetParameter("application_name", applicationName); err != nil {
-		return validationError(http.MethodDelete, "/api/assets/upload", err.Error(), err)
-	}
-	if !firmwarePathIsSane("/ext/user_assets/" + applicationName) {
-		err := errors.New("application_name produces an unsafe firmware path")
+	if err := validateApplicationName(applicationName); err != nil {
 		return validationError(http.MethodDelete, "/api/assets/upload", err.Error(), err)
 	}
 	return s.client.doSuccess(ctx, http.MethodDelete, "/api/assets/upload", url.Values{"application_name": []string{applicationName}}, nil)

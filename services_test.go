@@ -770,12 +770,27 @@ func TestDisplayValidationRejectsTypedNilPointerElements(t *testing.T) {
 }
 
 func TestProductValidatorsRejectInvalidInputs(t *testing.T) {
+	t.Run("draw priority above firmware maximum", func(t *testing.T) {
+		err := (DisplayElements{
+			ApplicationName: "app",
+			Priority:        101,
+			Elements: []DisplayElement{
+				TextElement{BaseDisplayElement: BaseDisplayElement{ID: "text"}, Text: "Hi", Font: FontNormal},
+			},
+		}).Validate()
+		if err == nil {
+			t.Fatal("expected priority validation error")
+		}
+		if !strings.Contains(err.Error(), "priority") {
+			t.Fatalf("error = %q, want priority ceiling failure", err)
+		}
+	})
+
 	invalid := []struct {
 		name string
 		err  error
 	}{
 		{"color", func() error { _, err := NormalizeColor("#fff"); return err }()},
-		{"draw priority above firmware maximum", (DisplayElements{Priority: 101, Elements: []DisplayElement{TextElement{BaseDisplayElement: BaseDisplayElement{ID: "text"}, Text: "Hi", Font: FontNormal}}}).Validate()},
 		{"draw empty elements", (DisplayElements{ApplicationName: "app", Priority: DefaultDisplayPriority}).Validate()},
 		{"text invalid font", (DisplayElements{ApplicationName: "app", Priority: DefaultDisplayPriority, Elements: []DisplayElement{TextElement{BaseDisplayElement: BaseDisplayElement{ID: "text"}, Text: "Hi", Font: Font("huge")}}}).Validate()},
 		{"image duplicate source", (DisplayElements{ApplicationName: "app", Priority: DefaultDisplayPriority, Elements: []DisplayElement{ImageElement{BaseDisplayElement: BaseDisplayElement{ID: "image"}, Path: "a.png", StockPath: "shared/a.png"}}}).Validate()},

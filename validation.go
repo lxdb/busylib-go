@@ -23,17 +23,18 @@ var (
 )
 
 const (
-	maxDisplayElements       = 100
-	maxAssetParameterBytes   = 31
-	maxDisplayQueryBytes     = 63
-	maxStoragePathBytes      = 63
-	maxLogFilenameBytes      = 63
-	maxUpdateVersionBytes    = 63
-	maxAccountServerURLBytes = 64
-	maxWiFiSSIDBytes         = 33
-	maxWiFiPasswordBytes     = 63
-	maxBusyTitleBytes        = 128
-	maxBusyThemeBytes        = 64
+	maxDisplayElements        = 100
+	maxApplicationNameBytes   = 31
+	maxUploadedAssetPathBytes = 64
+	maxStockAssetPathBytes    = 256
+	maxStoragePathBytes       = 63
+	maxLogFilenameBytes       = 63
+	maxUpdateVersionBytes     = 63
+	maxAccountServerURLBytes  = 64
+	maxWiFiSSIDBytes          = 33
+	maxWiFiPasswordBytes      = 63
+	maxBusyTitleBytes         = 128
+	maxBusyThemeBytes         = 64
 
 	busyTimerSimpleMaxMS   int64 = 24 * 60 * 60 * 1000
 	busyTimerIntervalMinMS int64 = 5 * 60 * 1000
@@ -61,6 +62,9 @@ func NormalizeColor(value string) (string, error) {
 // Validate reports whether a display request meets the locally recorded device
 // API contract. It does not contact the device.
 func (request DisplayElements) Validate() error {
+	if err := validateApplicationName(request.ApplicationName); err != nil {
+		return err
+	}
 	if request.Priority < 0 || request.Priority > 100 {
 		return errors.New("priority must be omitted or between 1 and 100")
 	}
@@ -122,14 +126,11 @@ func (request PlayAudio) Validate() error {
 
 // Validate reports whether an asset upload has safe names and a body.
 func (request UploadAssetRequest) Validate() error {
-	if err := validateAssetParameter("application_name", request.ApplicationName); err != nil {
+	if err := validateApplicationName(request.ApplicationName); err != nil {
 		return err
 	}
-	if err := validateAssetParameter("file", request.File); err != nil {
+	if err := validateUploadedAssetPath("file", request.File); err != nil {
 		return err
-	}
-	if !firmwarePathIsSane("/ext/user_assets/" + request.ApplicationName + "/" + request.File) {
-		return errors.New("application_name and file produce an unsafe firmware path")
 	}
 	if request.Body == nil {
 		return errors.New("asset upload body must not be nil")
@@ -441,6 +442,13 @@ func displayElementInfo(index int, applicationName string, element DisplayElemen
 			}
 			return validateOptionalPercent(fmt.Sprintf("elements[%d].opacity", index), value.Opacity)
 		}, nil
+	case XPMBitmapElement:
+		return value.BaseDisplayElement, func(index int) error { return validateXPMBitmapElement(index, value) }, nil
+	case *XPMBitmapElement:
+		if value == nil {
+			return BaseDisplayElement{}, nil, fmt.Errorf("elements[%d] must not be nil", index)
+		}
+		return value.BaseDisplayElement, func(index int) error { return validateXPMBitmapElement(index, *value) }, nil
 	case CountdownElement:
 		return value.BaseDisplayElement, func(index int) error { return validateCountdownElement(index, value) }, nil
 	case *CountdownElement:
@@ -482,6 +490,9 @@ func validateBaseDisplayElement(index int, base BaseDisplayElement) error {
 	if base.Y != nil && (*base.Y < math.MinInt16 || *base.Y > math.MaxInt16) {
 		return fmt.Errorf("%s.y must fit a signed 16-bit integer", prefix)
 	}
+	if base.ZIndex != nil && (*base.ZIndex < 0 || *base.ZIndex > math.MaxInt32) {
+		return fmt.Errorf("%s.z_index must be between 0 and %d", prefix, math.MaxInt32)
+	}
 	if base.Display != "" && base.Display != DisplayFront && base.Display != DisplayBack {
 		return fmt.Errorf("%s.display %q is not supported", prefix, base.Display)
 	}
@@ -489,6 +500,14 @@ func validateBaseDisplayElement(index int, base BaseDisplayElement) error {
 		return fmt.Errorf("%s.align %q is not supported", prefix, base.Align)
 	}
 	return nil
+}
+
+func validateXPMBitmapElement(index int, element XPMBitmapElement) error {
+	prefix := fmt.Sprintf("elements[%d]", index)
+	if element.Data == "" {
+		return fmt.Errorf("%s.data must not be empty", prefix)
+	}
+	return validateOptionalPercent(prefix+".opacity", element.Opacity)
 }
 
 func validateTextElement(index int, element TextElement) error {
@@ -579,19 +598,18 @@ func validateRectangleElement(index int, element RectangleElement) error {
 }
 
 func validateAssetSource(field, applicationName, path, stockPath string) error {
+	if err := validateApplicationName(applicationName); err != nil {
+		return err
+	}
 	hasPath := path != ""
 	hasStockPath := stockPath != ""
 	if hasPath == hasStockPath {
 		return fmt.Errorf("%s must set exactly one of path or stock_path", field)
 	}
-	if hasPath && !firmwarePathIsSane("/ext/user_assets/"+applicationName+"/"+path) {
-		return fmt.Errorf("%s.path produces an unsafe firmware path", field)
+	if hasPath {
+		return validateUploadedAssetPath(field+".path", path)
 	}
-	lastSlash := strings.LastIndexByte(stockPath, '/')
-	if hasStockPath && (lastSlash < 0 || lastSlash == len(stockPath)-1) {
-		return fmt.Errorf("%s.stock_path has invalid stock asset path", field)
-	}
-	return nil
+	return validateStockAssetPath(field+".stock_path", stockPath)
 }
 
 func validateOptionalPercent(field string, value *int) error {
@@ -604,12 +622,44 @@ func validateOptionalPercent(field string, value *int) error {
 	return nil
 }
 
-func validateAssetParameter(field, value string) error {
-	if value == "" {
-		return fmt.Errorf("%s must not be empty", field)
+func validateApplicationName(value string) error {
+	if len(value) < 1 || len(value) > maxApplicationNameBytes {
+		return fmt.Errorf("application_name must be 1-%d bytes", maxApplicationNameBytes)
 	}
-	if len(value) > maxAssetParameterBytes {
-		return fmt.Errorf("%s must be at most %d bytes", field, maxAssetParameterBytes)
+	if !applicationNamePattern.MatchString(value) {
+		return errors.New("application_name must contain only ASCII letters, digits, periods, underscores, or hyphens")
+	}
+	return nil
+}
+
+func validateUploadedAssetPath(field, value string) error {
+	return validateSafeAssetPath(field, value, maxUploadedAssetPathBytes)
+}
+
+func validateStockAssetPath(field, value string) error {
+	if err := validateSafeAssetPath(field, value, maxStockAssetPathBytes); err != nil {
+		return err
+	}
+	if !strings.HasPrefix(value, "shared/") {
+		return fmt.Errorf("%s must begin with shared/", field)
+	}
+	return nil
+}
+
+func validateSafeAssetPath(field, value string, maximumBytes int) error {
+	if len(value) < 1 || len(value) > maximumBytes {
+		return fmt.Errorf("%s must be 1-%d bytes", field, maximumBytes)
+	}
+	if !assetPathPattern.MatchString(value) {
+		return fmt.Errorf("%s contains unsupported characters", field)
+	}
+	if strings.HasPrefix(value, "/") || strings.HasSuffix(value, "/") || strings.Contains(value, "//") || strings.Contains(value, "..") {
+		return fmt.Errorf("%s must be a safe relative asset path", field)
+	}
+	for _, segment := range strings.Split(value, "/") {
+		if segment == "." {
+			return fmt.Errorf("%s must not contain traversal segments", field)
+		}
 	}
 	return nil
 }
@@ -730,9 +780,19 @@ func validateTimezone(value string) error {
 	return nil
 }
 
-func validateDisplayApplicationName(value string) error {
-	if len(value) > maxDisplayQueryBytes {
-		return fmt.Errorf("application_name must be at most %d bytes", maxDisplayQueryBytes)
+func validateClearDisplayElementsRequest(request ClearDisplayElementsRequest) error {
+	if len(request.ElementIDs) == 0 {
+		return errors.New("element_ids must contain at least one element ID")
+	}
+	if request.ApplicationName != "" {
+		if err := validateApplicationName(request.ApplicationName); err != nil {
+			return err
+		}
+	}
+	for index, id := range request.ElementIDs {
+		if !displayElementIDPattern.MatchString(id) {
+			return fmt.Errorf("element_ids[%d] must contain only ASCII letters, digits, periods, underscores, or hyphens", index)
+		}
 	}
 	return nil
 }

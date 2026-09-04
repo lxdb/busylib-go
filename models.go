@@ -165,6 +165,15 @@ type DisplayElements struct {
 	Elements             []DisplayElement `json:"elements"`
 }
 
+// ClearDisplayElementsRequest selects rendered elements to remove.
+type ClearDisplayElementsRequest struct {
+	// ApplicationName limits removal to one application. An empty value applies
+	// the ElementIDs filter across all applications.
+	ApplicationName string `json:"-"`
+	// ElementIDs contains one or more rendered element identifiers.
+	ElementIDs []string `json:"element_ids"`
+}
+
 // DisplayElement is a supported element in a display update.
 type DisplayElement interface {
 	displayElement()
@@ -174,13 +183,16 @@ type DisplayElement interface {
 // elements. Positive Timeout and DisplayUntil values are mutually exclusive.
 // Nil coordinates omit explicit placement on the corresponding axis.
 type BaseDisplayElement struct {
-	ID           string        `json:"id"`
-	Timeout      *int          `json:"timeout,omitempty"`
-	DisplayUntil string        `json:"display_until,omitempty"`
-	X            *int          `json:"x,omitempty"`
-	Y            *int          `json:"y,omitempty"`
-	Display      DisplayTarget `json:"display,omitempty"`
-	Align        DisplayAlign  `json:"align,omitempty"`
+	ID           string `json:"id"`
+	Timeout      *int   `json:"timeout,omitempty"`
+	DisplayUntil string `json:"display_until,omitempty"`
+	X            *int   `json:"x,omitempty"`
+	Y            *int   `json:"y,omitempty"`
+	// ZIndex selects a layer from 0 through 2,147,483,647. Nil lets the firmware
+	// assign a layer from the element's request order.
+	ZIndex  *int          `json:"z_index,omitempty"`
+	Display DisplayTarget `json:"display,omitempty"`
+	Align   DisplayAlign  `json:"align,omitempty"`
 }
 
 // DisplayTarget selects a physical device display.
@@ -225,6 +237,7 @@ const (
 	displayElementAnimation displayElementType = "animation"
 	displayElementCountdown displayElementType = "countdown"
 	displayElementRectangle displayElementType = "rectangle"
+	displayElementXPMBitmap displayElementType = "xpmbitmap"
 )
 
 // TextElement displays text with the selected font and scrolling behavior.
@@ -278,6 +291,15 @@ type AnimationElement struct {
 	AwaitPreviousEnd bool   `json:"await_previous_end,omitempty"`
 	Section          string `json:"section,omitempty"`
 	Opacity          *int   `json:"opacity,omitempty"`
+}
+
+// XPMBitmapElement displays inline XPM bitmap data.
+type XPMBitmapElement struct {
+	BaseDisplayElement
+	// Data contains the inline XPM2 image.
+	Data string `json:"data"`
+	// Opacity optionally selects a percentage from 0 through 100.
+	Opacity *int `json:"opacity,omitempty"`
 }
 
 // CountdownElement displays elapsed or remaining time for a timestamp.
@@ -340,6 +362,7 @@ func (ImageElement) displayElement()     {}
 func (AnimationElement) displayElement() {}
 func (CountdownElement) displayElement() {}
 func (RectangleElement) displayElement() {}
+func (XPMBitmapElement) displayElement() {}
 
 // MarshalJSON adds the text element wire discriminator.
 func (e TextElement) MarshalJSON() ([]byte, error) {
@@ -384,6 +407,15 @@ func (e RectangleElement) MarshalJSON() ([]byte, error) {
 		Type displayElementType `json:"type"`
 		alias
 	}{Type: displayElementRectangle, alias: alias(e)})
+}
+
+// MarshalJSON adds the XPM bitmap element wire discriminator.
+func (e XPMBitmapElement) MarshalJSON() ([]byte, error) {
+	type alias XPMBitmapElement
+	return json.Marshal(struct {
+		Type displayElementType `json:"type"`
+		alias
+	}{Type: displayElementXPMBitmap, alias: alias(e)})
 }
 
 // PlayAudio selects exactly one uploaded Path or firmware StockPath for

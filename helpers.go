@@ -58,6 +58,14 @@ func NewStockAnimationElement(id, stockPath string) AnimationElement {
 	}
 }
 
+// NewXPMBitmapElement creates an inline XPM bitmap for the front display.
+func NewXPMBitmapElement(id, data string) XPMBitmapElement {
+	return XPMBitmapElement{
+		BaseDisplayElement: defaultDisplayElement(id),
+		Data:               data,
+	}
+}
+
 // NewCountdownElement creates a front-display countdown with the supplied time settings.
 func NewCountdownElement(id, timestamp string, direction CountdownDirection, showHours CountdownShowHours) CountdownElement {
 	return CountdownElement{
