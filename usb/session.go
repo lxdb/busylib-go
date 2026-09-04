@@ -10,7 +10,9 @@ import (
 	"time"
 )
 
-// Session is a persistent, serialized USB CLI connection.
+// Session is a persistent, serialized USB CLI connection. It permits one
+// command at a time and becomes unusable after a transport or prompt-recovery
+// failure.
 type Session struct {
 	conn   net.Conn
 	config config
@@ -162,7 +164,8 @@ func (s *Session) Commands() Commands {
 	}
 }
 
-// Close is idempotent and unblocks an active command.
+// Close is idempotent and unblocks an active command. It does not wait for that
+// command's goroutine to return.
 func (s *Session) Close() error {
 	s.stateMu.Lock()
 	if s.closed {

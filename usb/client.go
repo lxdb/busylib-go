@@ -14,14 +14,17 @@ type Client struct {
 }
 
 // Response contains both the exact prompt-framed bytes returned by the device
-// and a cleaned form suitable for ordinary command output.
+// and a cleaned form suitable for ordinary command output. Raw is owned by the
+// caller.
 type Response struct {
 	Command string
 	Raw     []byte
 	Output  string
 }
 
-// NewClient creates an independent optional USB CLI client.
+// NewClient creates an independent optional USB CLI client. By default, it
+// connects to DefaultAddress with a 2-second dial timeout, a 5-second command
+// timeout, and a 1 MiB response limit. Nil options are ignored.
 func NewClient(options ...Option) (*Client, error) {
 	config := defaultConfig()
 	for _, option := range options {
@@ -35,7 +38,8 @@ func NewClient(options ...Option) (*Client, error) {
 	return &Client{config: config}, nil
 }
 
-// Probe verifies that a connection reaches the firmware CLI prompt.
+// Probe opens a fresh connection, verifies the firmware CLI prompt, and closes
+// the connection.
 func (c *Client) Probe(ctx context.Context) error {
 	session, err := c.Open(ctx)
 	if err != nil {
@@ -60,7 +64,8 @@ func (c *Client) Open(ctx context.Context) (*Session, error) {
 	return session, nil
 }
 
-// SendCommand runs one bounded command over a fresh connection.
+// SendCommand runs one bounded command over a fresh connection, then closes the
+// connection before returning.
 func (c *Client) SendCommand(ctx context.Context, command string, args ...string) (Response, error) {
 	line, err := buildCommand(command, args...)
 	if err != nil {
@@ -75,7 +80,8 @@ func (c *Client) SendCommand(ctx context.Context, command string, args ...string
 }
 
 // StreamCommand writes one continuous command to dst over a fresh connection.
-// Cancel the context to send the firmware's ETX interrupt byte.
+// Cancel the context to send the firmware's ETX interrupt byte and recover the
+// prompt before closing the connection.
 func (c *Client) StreamCommand(ctx context.Context, dst io.Writer, command string, args ...string) error {
 	line, err := buildCommand(command, args...)
 	if err != nil {

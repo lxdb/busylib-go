@@ -16,7 +16,9 @@ var (
 	ErrPromptNotFound = errors.New("USB CLI prompt not found")
 )
 
-// Error describes a USB CLI connection, command, or lifecycle failure.
+// Error describes a USB CLI connection, command, or lifecycle failure. Use
+// errors.As to inspect it and errors.Is to inspect the wrapped cause. Command
+// can contain user-supplied arguments and should not be logged blindly.
 type Error struct {
 	Operation string
 	Address   string

@@ -24,10 +24,10 @@ type config struct {
 	maxResponseBytes int
 }
 
-// Option configures a USB CLI client.
+// Option configures a USB CLI client. NewClient ignores nil options.
 type Option func(*config) error
 
-// WithAddress changes the raw CLI TCP address.
+// WithAddress changes the raw CLI TCP address in host:port form.
 func WithAddress(address string) Option {
 	return func(config *config) error {
 		if strings.TrimSpace(address) == "" {
@@ -61,7 +61,7 @@ func WithCommandTimeout(timeout time.Duration) Option {
 	}
 }
 
-// WithMaxResponseBytes bounds buffered command responses.
+// WithMaxResponseBytes sets the positive limit for buffered command responses.
 func WithMaxResponseBytes(maximum int) Option {
 	return func(config *config) error {
 		if maximum <= 0 {
