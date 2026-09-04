@@ -43,7 +43,8 @@ func (e *APIError) Error() string {
 }
 
 // RequestError reports a transport or response-body failure after all permitted
-// attempts. Unwrap exposes the underlying cause to errors.Is and errors.As.
+// attempts. Its cause can contain both a context error and a transport-specific
+// error. Unwrap exposes every joined cause to errors.Is and errors.As.
 type RequestError struct {
 	Method    string
 	Path      string
@@ -52,7 +53,7 @@ type RequestError struct {
 	Err       error
 }
 
-// Error returns the request context, attempt count, and transport cause.
+// Error returns the request context, attempt count, and underlying causes.
 func (e *RequestError) Error() string {
 	if e.RequestID != "" {
 		return fmt.Sprintf("%s %s request failed after %d attempt(s): %v (request_id=%s)", e.Method, e.Path, e.Attempts, e.Err, e.RequestID)
@@ -60,7 +61,7 @@ func (e *RequestError) Error() string {
 	return fmt.Sprintf("%s %s request failed after %d attempt(s): %v", e.Method, e.Path, e.Attempts, e.Err)
 }
 
-// Unwrap returns the transport cause.
+// Unwrap returns the underlying cause or joined causes.
 func (e *RequestError) Unwrap() error {
 	return e.Err
 }

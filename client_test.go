@@ -1479,29 +1479,49 @@ func TestVersionNegotiationCanBeDisabled(t *testing.T) {
 }
 
 func TestContextCancellationReturnsRequestError(t *testing.T) {
+	transportCause := errors.New("request outcome is unknown")
+	started := make(chan struct{})
 	client, err := NewClient(
 		WithBaseURL("http://busybar.local"),
 		WithVersionNegotiation(VersionNegotiationDisabled),
 		WithRequestIDGenerator(fixedRequestID("rid-1")),
 		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			close(started)
 			<-r.Context().Done()
-			return nil, r.Context().Err()
+			return nil, errors.Join(r.Context().Err(), transportCause)
 		})}),
 	)
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	_, err = client.Do(ctx, Request{
-		Method:       "GET",
-		Path:         "/api/status",
-		ResponseMode: ResponseModeJSON,
-	})
+	result := make(chan error, 1)
+	go func() {
+		_, err := client.Do(ctx, Request{
+			Method:       "GET",
+			Path:         "/api/status",
+			ResponseMode: ResponseModeJSON,
+		})
+		result <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for request transport")
+	}
+	cancel()
+	err = <-result
 	var requestErr *RequestError
 	if !errors.As(err, &requestErr) {
 		t.Fatalf("error = %T %v, want RequestError", err, err)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context cancellation identity", err)
+	}
+	if !errors.Is(err, transportCause) {
+		t.Fatalf("error = %v, want transport cause preserved", err)
 	}
 }
 
