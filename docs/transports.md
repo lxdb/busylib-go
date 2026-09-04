@@ -12,7 +12,7 @@ Choose the transport by where the device is reachable and by who must own the co
 
 ## Local HTTP
 
-Create a client with a base URL that includes a scheme and host.
+Create a client with the default USB-network endpoint, or pass an alternate hostname or HTTP or HTTPS URL.
 
 ```go
 client, err := busylib.NewClient(busylib.WithBaseURL("http://busybar.local"))
@@ -24,7 +24,7 @@ The retry policy can retry repeatable `GET`, `HEAD`, and `OPTIONS` requests afte
 
 ## Local status stream
 
-Use `NewStatusStream` to receive device status changes over WebSocket. A stream is one-shot: create it, start it once, and stop it when the caller is finished.
+Use `NewStatusStream` to receive device status changes over WebSocket. A stream is one-shot: it can be started once, and `Wait` exposes its stable completion result.
 
 ```go
 statusStream, err := client.NewStatusStream()
@@ -34,19 +34,27 @@ if err != nil {
 if err := statusStream.Start(ctx); err != nil {
     return err
 }
-defer statusStream.Stop()
 
+statuses := statusStream.Statuses()
 for {
     select {
-    case status := <-statusStream.Statuses():
-        log.Printf("stream data status: %s", status.Data)
+    case status, ok := <-statuses:
+        if !ok {
+            return statusStream.Wait()
+        }
+        log.Printf(
+            "stream lifecycle=%s data=%s",
+            status.Lifecycle,
+            status.Data,
+        )
+
     case <-ctx.Done():
-        return ctx.Err()
+        return errors.Join(ctx.Err(), statusStream.Stop())
     }
 }
 ```
 
-Cancel the context or call `Stop` to end receive activity. `Wait` returns the stable terminal or cleanup error after the stream has started or stopped.
+After `Start` succeeds, `Wait` blocks until the stream finishes and then returns its terminal or cleanup error. Repeated calls return the same result. `Stop` requests shutdown, waits for cleanup, and returns the same completion result. Calling `Wait` before either `Start` or `Stop` returns `stream.ErrNotStarted`. A stream cannot be restarted after it finishes.
 
 ## Remote MQTT
 
@@ -61,7 +69,16 @@ if err != nil {
 snapshot, err := client.Device().System().Status(ctx)
 ```
 
-Remote payloads are decoded with a bounded message size. A subscription owns its internal receive path until it is closed or its context is canceled.
+`remote.Client` supplies `SubscriptionRequest.MaxPayloadBytes` on every HTTP-response and status-stream subscription. A transport implementation must:
+
+- reject a non-positive `MaxPayloadBytes` value when subscribing;
+- check each received payload before retaining or copying it for that subscriber;
+- stop delivery to the subscriber when a payload exceeds the requested limit and make `Receive` return an error that is or wraps `remote.ErrMessageTooLarge`; and
+- unblock an outstanding `Receive` when `Subscription.Close` is called.
+
+This lets callers identify an oversized payload with `errors.Is`.
+
+The requested limit comes from `remote.WithMaxMessageBytes`; its default is `remote.DefaultMaxMessageBytes`. The caller still owns the MQTT connection and must close it only after all remote clients that use it have been closed.
 
 ## Eclipse Paho adapter
 

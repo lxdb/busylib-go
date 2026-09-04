@@ -34,7 +34,7 @@ BUSYBAR_FIRMWARE_DIR=/path/to/busybar-firmware scripts/verify.sh all
 
 `all` validates repository and workflow syntax, Conventional Commit history, minimum and current Go versions, tests, race behavior, vet, coverage, lint, module metadata, known vulnerabilities, generated protobufs, the firmware contract, broker-backed integration, device-tag compilation, and the scheduled fuzz target. Set `BUSYLIB_FUZZ_TIME` only for a focused diagnostic run; release evidence uses the declared default.
 
-The adapter depends on an unreleased root module version. The harness verifies its metadata in a disposable copy with a temporary local replacement. After the root version is public, separately run the workspace-disabled consumer check documented in [Releasing](releasing.md).
+For changes that span both modules, the harness tests the adapter against the current root checkout in a disposable workspace. Before releasing an adapter change, also run the workspace-disabled consumer check from [Releasing](releasing.md) against the root version declared in `pahotransport/go.mod`.
 
 ## Physical-device verification
 

@@ -49,16 +49,28 @@ log.Printf("encoded frames: %d", result.DisplayFrameCount)
 
 The animation package can encode image sequences or transcode supported ZIP archives. It validates archive structure and bounds both compressed input and generated output.
 
-## Decode a display frame
+## Capture and decode a display frame
 
 ```go
+raw, err := client.Display().Screen(ctx, busylib.DisplayFront)
+if err != nil {
+    return err
+}
+
 value, err := frame.FromHTTP(busylib.DisplayFront, raw)
 if err != nil {
     return err
 }
 
 decoded, err := value.RGBA()
+if err != nil {
+    return err
+}
+
+log.Printf("captured display bounds: %s", decoded.Bounds())
 ```
+
+Use `busylib.DisplayFront` or `busylib.DisplayBack` when selecting a physical display. The equivalent shared-package values are `display.Front` and `display.Back`. Numeric selectors are not part of the v0.1.0 API.
 
 Frame decoding requires exact dimensions and byte counts. The package rejects malformed or oversized data before decoding.
 

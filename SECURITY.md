@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-No public version is supported. This section will identify supported release lines after publication is authorized and a release exists.
+Security reports are evaluated against the latest published release. This project does not currently promise security fixes for older releases.
 
 ## Report a vulnerability
 

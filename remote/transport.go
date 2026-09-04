@@ -43,6 +43,11 @@ type SubscriptionRequest struct {
 // its slices before returning. Implementations must support concurrent calls.
 type Transport interface {
 	Publish(context.Context, Message) error
+	// Subscribe creates an exact-topic subscription. The implementation must
+	// validate MaxPayloadBytes and enforce it before retaining or copying each
+	// delivered payload for the subscriber. If a payload exceeds the limit, the
+	// implementation must stop delivery and make Receive return an error that is
+	// or wraps ErrMessageTooLarge.
 	Subscribe(context.Context, SubscriptionRequest) (Subscription, error)
 }
 

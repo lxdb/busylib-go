@@ -4,16 +4,16 @@ This guide connects to a BUSY Bar on the local network, reads its status, and ex
 
 ## Create a client
 
-`NewClient` validates the base URL and creates a local HTTP client. Give every request a deadline so that unreachable devices do not block the caller indefinitely.
-
 ```go
-ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-defer cancel()
-
-client, err := busylib.NewClient(busylib.WithBaseURL("http://busybar.local"))
+// NewClient defaults to the BUSY Bar USB-network endpoint:
+// http://10.0.4.20
+client, err := busylib.NewClient()
 if err != nil {
     return err
 }
+
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
 
 status, err := client.System().Status(ctx)
 if err != nil {
@@ -23,7 +23,7 @@ if err != nil {
 log.Printf("firmware version: %s", status.Firmware.Version)
 ```
 
-The endpoint can use a DNS name or an IP address. Include the scheme. The client rejects a base URL without a host.
+`NewClient()` uses `busylib.DefaultLocalBaseURL`, the BUSY Bar USB-network endpoint. To connect through another local-network address, pass `busylib.WithBaseURL("busybar.local")` or a complete HTTP or HTTPS URL. A missing scheme defaults to `http`; any path supplied in the base URL is discarded because the client stores only the endpoint origin.
 
 ## Control API version negotiation
 
@@ -50,6 +50,40 @@ if errors.As(err, &apiErr) {
 ```
 
 Error bodies are bounded. If a response exceeds the configured limit, the client returns a size error instead of buffering the entire body.
+
+## Prepare and inspect a request
+
+Use `Prepare` when request construction and execution must happen separately.
+
+```go
+prepared, err := client.Prepare(busylib.Request{
+    Method:       http.MethodGet,
+    Path:         "/api/status",
+    ResponseMode: busylib.ResponseModeJSON,
+})
+if err != nil {
+    return err
+}
+
+targetURL := prepared.URL()
+log.Printf(
+    "request: %s %s request_id=%s",
+    prepared.Method(),
+    targetURL.String(),
+    prepared.RequestID(),
+)
+
+response, err := client.DoPrepared(ctx, prepared)
+if err != nil {
+    return err
+}
+
+log.Printf("response status: %d", response.StatusCode)
+```
+
+`PreparedRequest` is immutable. Inspect it through `Method`, `Path`, `URL`, `Header`, `ResponseMode`, and `RequestID`. `URL` and `Header` return copies; changing those copies does not change later execution.
+
+A prepared request can be executed more than once only when its body is repeatable. Prepare a new request instead of reusing one whose body is a one-shot stream.
 
 ## Stream large files
 

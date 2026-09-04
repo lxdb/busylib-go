@@ -14,6 +14,18 @@
 
 The supported Go toolchains, firmware contract, platforms, generated-code policy, and default safety limits are listed in [Compatibility](docs/compatibility.md).
 
+## Install
+
+```sh
+go get github.com/lxdb/busylib-go@v0.1.0
+```
+
+The Eclipse Paho adapter is an independently versioned optional module:
+
+```sh
+go get github.com/lxdb/busylib-go/pahotransport@v0.1.0
+```
+
 ## Quick start
 
 Create a local client, give each operation a bounded context, and handle the returned error.
