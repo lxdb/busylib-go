@@ -31,6 +31,7 @@ type streamHandshake struct {
 }
 
 func TestStatusStreamHandshakeMessagesAndSnapshotControl(t *testing.T) {
+	hold := make(chan struct{})
 	handshakes := make(chan streamHandshake, 1)
 	snapshots := make(chan string, 1)
 	serverErrors := make(chan error, 1)
@@ -79,8 +80,10 @@ func TestStatusStreamHandshakeMessagesAndSnapshotControl(t *testing.T) {
 			return
 		}
 		snapshots <- string(snapshot)
+		<-hold
 	}))
 	defer server.Close()
+	defer close(hold)
 
 	statusStream := newTestStatusStream(t, server, WithLocalAccessKey("1234"))
 	ctx, cancel := context.WithCancel(context.Background())
