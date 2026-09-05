@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 (2026-09-05)
+
+### Maintenance
+
+- Establish the release baseline for the recreated repository.
+- Preserve the root module API and behavior from v0.2.1.
+
 ## [0.2.1](https://github.com/lxdb/busylib-go/compare/v0.2.0...v0.2.1) (2026-09-05)
 
 
