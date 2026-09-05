@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/lxdb/busylib-go/compare/v0.3.0...v0.3.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* retract superseded module versions ([6e0e37b](https://github.com/lxdb/busylib-go/commit/6e0e37bc578270666f7f5d38790e3beefb8fdcd1))
+* retract superseded module versions ([#2](https://github.com/lxdb/busylib-go/issues/2)) ([f3ca57e](https://github.com/lxdb/busylib-go/commit/f3ca57e3e2f7f51b06ad94e958e480a0e5155025))
+
 ## 0.3.0 (2026-09-05)
 
 ### Maintenance
