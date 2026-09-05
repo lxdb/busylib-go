@@ -2,6 +2,9 @@ module github.com/lxdb/busylib-go/pahotransport
 
 go 1.24.0
 
+// Superseded by v0.2.0 after repository history was replaced.
+retract v0.1.0
+
 require (
 	github.com/eclipse/paho.golang v0.23.0
 	github.com/lxdb/busylib-go v0.3.0
