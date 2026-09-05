@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/lxdb/busylib-go/compare/v0.2.0...v0.2.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **firmware:** audit release tag instead of checkout head ([d9f9009](https://github.com/lxdb/busylib-go/commit/d9f900960f10a9cc5b8c544274850fa98fce4ef6))
+
 ## [0.2.0](https://github.com/lxdb/busylib-go/compare/v0.1.0...v0.2.0) (2026-09-04)
 
 
