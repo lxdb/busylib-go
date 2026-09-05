@@ -44,7 +44,7 @@ commands:
   metadata       Verify checksums and tidy module metadata without changing the tree.
   security       Run the pinned vulnerability scanner for all modules.
   generated      Verify generated protobuf code and focused API tests.
-  firmware       Verify the pinned firmware contract checkout.
+  firmware       Verify the recorded firmware release tag.
   integration    Run broker-backed Paho tests and compile device-tagged tests.
   fuzz           Run the frame fuzz target for BUSYLIB_FUZZ_TIME or 5 minutes.
   history        Validate Conventional Commits after the release bootstrap commit.

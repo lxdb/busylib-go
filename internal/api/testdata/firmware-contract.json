@@ -1,7 +1,6 @@
 {
   "repository": "https://github.com/busy-app/busybar-firmware.git",
-  "branch": "release",
-  "firmwareCommit": "2cd7ec8abf8479ba3398241e99d291ec24f2a96f",
+  "firmwareRelease": "1.2.3",
   "apiVersion": "27.5.0",
   "protobufCommit": "dba670e2ddb5cda511af997ca5fcb1254e90917f",
   "license": "GPL-2.0-or-later",

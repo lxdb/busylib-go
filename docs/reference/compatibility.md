@@ -10,7 +10,7 @@ Compatibility depends on the Go module, firmware API contract, selected platform
 | Paho adapter Go version and root dependency | [`pahotransport/go.mod`](../../pahotransport/go.mod) |
 | BLE module Go version, root dependency, and CoreBluetooth binding | [`ble/go.mod`](../../ble/go.mod) |
 | Verification toolchains and pinned tools | [`scripts/verify-tools.env`](../../scripts/verify-tools.env) |
-| Firmware API contract and audited revisions | [`internal/api/testdata/firmware-contract.json`](../../internal/api/testdata/firmware-contract.json) |
+| Firmware API contract and audited release tag | [`internal/api/testdata/firmware-contract.json`](../../internal/api/testdata/firmware-contract.json) |
 | Protobuf repository and source revision | [`scripts/protobuf-source.env`](../../scripts/protobuf-source.env) |
 | Generated protobuf package and digest mapping | [`scripts/protobuf-packages.tsv`](../../scripts/protobuf-packages.tsv) |
 | CI operating systems and checks | [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) |
@@ -26,7 +26,7 @@ Use `GOWORK=off` when verifying an optional module against the root version decl
 
 ## Firmware API
 
-The local client discovers the API semantic version, caches it, and sends it in `X-API-Sem-Ver`. The recorded firmware contract covers HTTP operations, the status stream, frames, snapshots, optional tools, and remote MQTT behavior.
+The local client discovers the API semantic version, caches it, and sends it in `X-API-Sem-Ver`. The recorded firmware contract names the audited firmware release tag and covers HTTP operations, the status stream, frames, snapshots, optional tools, and remote MQTT behavior. The checker reads that tag directly and does not depend on the firmware checkout's active branch or `HEAD`.
 
 `busylib.WithVersionNegotiation(busylib.VersionNegotiationDisabled)` supports endpoints that do not implement discovery. It omits version discovery and the header. It does not validate or translate an incompatible response schema.
 

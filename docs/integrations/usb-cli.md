@@ -4,7 +4,7 @@ The `usb` package accesses the raw firmware command line through the BUSY Bar US
 
 ## Requirements
 
-The host must have a route to the USB-network interface, and the device firmware must expose the CLI. The default address is `usb.DefaultAddress`.
+The host must have a route to the USB-network interface, and the device firmware must expose the CLI. The default address is `usb.DefaultAddress` (`10.0.4.20:23`).
 
 Create a client and run one bounded command:
 

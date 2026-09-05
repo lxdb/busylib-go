@@ -2,12 +2,42 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	internalapi "github.com/lxdb/busylib-go/internal/api"
 )
+
+func TestTaggedFirmwareSourceReadsReleaseInsteadOfHEAD(t *testing.T) {
+	root := t.TempDir()
+	runGit(t, root, "init")
+	runGit(t, root, "config", "user.name", "Firmware Contract Test")
+	runGit(t, root, "config", "user.email", "firmware-contract@example.invalid")
+
+	const sourceFile = "applications/services/web_server/http_api/http_api.h"
+	writeFirmwareFixture(t, root, map[string]string{sourceFile: "release contents"})
+	runGit(t, root, "add", sourceFile)
+	runGit(t, root, "commit", "-m", "release")
+	runGit(t, root, "tag", "1.2.3")
+
+	writeFirmwareFixture(t, root, map[string]string{sourceFile: "development contents"})
+	runGit(t, root, "add", sourceFile)
+	runGit(t, root, "commit", "-m", "development")
+
+	source, err := newTaggedFirmwareSource(root, "1.2.3")
+	if err != nil {
+		t.Fatalf("newTaggedFirmwareSource: %v", err)
+	}
+	got, err := source.readFile(sourceFile, make(map[string][]byte))
+	if err != nil {
+		t.Fatalf("readFile: %v", err)
+	}
+	if string(got) != "release contents" {
+		t.Fatalf("tagged source = %q, want release contents", got)
+	}
+}
 
 func TestCheckFramesVerifiesCanonicalFactsAndDetectsBGRDrift(t *testing.T) {
 	contract, err := internalapi.LoadContractFile("../../testdata/firmware-contract.json")
@@ -68,7 +98,7 @@ data[0] = color.blue;
 	}
 	writeFirmwareFixture(t, root, files)
 
-	if err := checkFrames(root, contract.Frames, make(map[string][]byte)); err != nil {
+	if err := checkFrames(workingTreeFirmwareSource(root), contract.Frames, make(map[string][]byte)); err != nil {
 		t.Fatalf("checkFrames: %v", err)
 	}
 
@@ -77,7 +107,7 @@ data[0] = color.blue;
 	if err := os.WriteFile(canvasPath, []byte(canvas), 0o600); err != nil {
 		t.Fatalf("rewrite canvas fixture: %v", err)
 	}
-	if err := checkFrames(root, contract.Frames, make(map[string][]byte)); err == nil {
+	if err := checkFrames(workingTreeFirmwareSource(root), contract.Frames, make(map[string][]byte)); err == nil {
 		t.Fatal("checkFrames accepted changed RGB888 byte order")
 	}
 
@@ -87,7 +117,7 @@ data[0] = color.blue;
 	if err := os.WriteFile(displayPath, []byte(driftedDisplay), 0o600); err != nil {
 		t.Fatalf("rewrite front dimensions: %v", err)
 	}
-	if err := checkFrames(root, contract.Frames, make(map[string][]byte)); err == nil {
+	if err := checkFrames(workingTreeFirmwareSource(root), contract.Frames, make(map[string][]byte)); err == nil {
 		t.Fatal("checkFrames accepted changed front display width")
 	}
 }
@@ -106,7 +136,7 @@ MG_REPLY_ERROR(conn, 508, "Failed to dump logs.");
 	path := "applications/services/web_server/http_api/api_log.c"
 	writeFirmwareFixture(t, root, map[string]string{path: source})
 
-	if err := checkLogDump(root, make(map[string][]byte)); err != nil {
+	if err := checkLogDump(workingTreeFirmwareSource(root), make(map[string][]byte)); err != nil {
 		t.Fatalf("checkLogDump: %v", err)
 	}
 
@@ -114,7 +144,7 @@ MG_REPLY_ERROR(conn, 508, "Failed to dump logs.");
 	if err := os.WriteFile(filepath.Join(root, path), []byte(drifted), 0o600); err != nil {
 		t.Fatalf("rewrite log dump fixture: %v", err)
 	}
-	if err := checkLogDump(root, make(map[string][]byte)); err == nil {
+	if err := checkLogDump(workingTreeFirmwareSource(root), make(map[string][]byte)); err == nil {
 		t.Fatal("checkLogDump accepted the legacy path query")
 	}
 
@@ -122,7 +152,7 @@ MG_REPLY_ERROR(conn, 508, "Failed to dump logs.");
 	if err := os.WriteFile(filepath.Join(root, path), []byte(drifted), 0o600); err != nil {
 		t.Fatalf("rewrite log dump response: %v", err)
 	}
-	if err := checkLogDump(root, make(map[string][]byte)); err == nil {
+	if err := checkLogDump(workingTreeFirmwareSource(root), make(map[string][]byte)); err == nil {
 		t.Fatal("checkLogDump accepted a changed response path key")
 	}
 }
@@ -166,7 +196,7 @@ _MG_JSON_RESULT(
 	}
 	writeFirmwareFixture(t, root, files)
 
-	if err := checkRequiredCapabilities(root, make(map[string][]byte)); err != nil {
+	if err := checkRequiredCapabilities(workingTreeFirmwareSource(root), make(map[string][]byte)); err != nil {
 		t.Fatalf("checkRequiredCapabilities: %v", err)
 	}
 
@@ -209,7 +239,7 @@ _MG_JSON_RESULT(
 			}
 			writeFirmwareFixture(t, driftedRoot, fixture)
 
-			if err := checkRequiredCapabilities(driftedRoot, make(map[string][]byte)); err == nil {
+			if err := checkRequiredCapabilities(workingTreeFirmwareSource(driftedRoot), make(map[string][]byte)); err == nil {
 				t.Fatalf("checkRequiredCapabilities accepted missing %s marker", test.name)
 			}
 		})
@@ -224,7 +254,7 @@ func TestCheckHTTPScreenTransportVerifiesBase64Response(t *testing.T) {
 	}
 	writeFirmwareFixture(t, root, files)
 
-	if err := checkHTTPScreenTransport(root, make(map[string][]byte)); err != nil {
+	if err := checkHTTPScreenTransport(workingTreeFirmwareSource(root), make(map[string][]byte)); err != nil {
 		t.Fatalf("checkHTTPScreenTransport: %v", err)
 	}
 
@@ -233,7 +263,7 @@ func TestCheckHTTPScreenTransportVerifiesBase64Response(t *testing.T) {
 	if err := os.WriteFile(headerPath, []byte(drifted), 0o600); err != nil {
 		t.Fatalf("rewrite web server fixture: %v", err)
 	}
-	if err := checkHTTPScreenTransport(root, make(map[string][]byte)); err == nil {
+	if err := checkHTTPScreenTransport(workingTreeFirmwareSource(root), make(map[string][]byte)); err == nil {
 		t.Fatal("checkHTTPScreenTransport accepted non-Base64 frame output")
 	}
 
@@ -242,7 +272,7 @@ func TestCheckHTTPScreenTransportVerifiesBase64Response(t *testing.T) {
 	if err := os.WriteFile(streamPath, []byte(`MG_REPLY_DATA(conn, frame, frame_size);`), 0o600); err != nil {
 		t.Fatalf("rewrite screen response macro: %v", err)
 	}
-	if err := checkHTTPScreenTransport(root, make(map[string][]byte)); err == nil {
+	if err := checkHTTPScreenTransport(workingTreeFirmwareSource(root), make(map[string][]byte)); err == nil {
 		t.Fatal("checkHTTPScreenTransport accepted a changed response macro")
 	}
 }
@@ -289,7 +319,7 @@ BSB_State_StateUpdate_timer_profiles_tag
 	}
 	writeFirmwareFixture(t, root, files)
 
-	if err := checkSnapshots(root, contract, make(map[string][]byte)); err != nil {
+	if err := checkSnapshots(workingTreeFirmwareSource(root), contract, make(map[string][]byte)); err != nil {
 		t.Fatalf("checkSnapshots: %v", err)
 	}
 
@@ -297,7 +327,7 @@ BSB_State_StateUpdate_timer_profiles_tag
 	if err := os.WriteFile(namePath, []byte(`http_api_name_callback "device"`), 0o600); err != nil {
 		t.Fatalf("rewrite name fixture: %v", err)
 	}
-	if err := checkSnapshots(root, contract, make(map[string][]byte)); err == nil {
+	if err := checkSnapshots(workingTreeFirmwareSource(root), contract, make(map[string][]byte)); err == nil {
 		t.Fatal("checkSnapshots accepted a changed canonical name key")
 	}
 
@@ -307,7 +337,7 @@ BSB_State_StateUpdate_timer_profiles_tag
 	if err := os.WriteFile(subscriptionsPath, []byte(driftedSubscriptions), 0o600); err != nil {
 		t.Fatalf("rewrite snapshot update tag: %v", err)
 	}
-	if err := checkSnapshots(root, contract, make(map[string][]byte)); err == nil {
+	if err := checkSnapshots(workingTreeFirmwareSource(root), contract, make(map[string][]byte)); err == nil {
 		t.Fatal("checkSnapshots accepted a missing BLE update tag")
 	}
 }
@@ -333,7 +363,7 @@ func TestCheckOptionalToolsVerifiesCLIAndMediaFacts(t *testing.T) {
 	}
 	writeFirmwareFixture(t, root, files)
 
-	if err := checkOptionalTools(root, contract.OptionalTools, make(map[string][]byte)); err != nil {
+	if err := checkOptionalTools(workingTreeFirmwareSource(root), contract.OptionalTools, make(map[string][]byte)); err != nil {
 		t.Fatalf("checkOptionalTools: %v", err)
 	}
 
@@ -341,7 +371,7 @@ func TestCheckOptionalToolsVerifiesCLIAndMediaFacts(t *testing.T) {
 	if err := os.WriteFile(promptPath, []byte(`snprintf(buf, length - 1, "%s> ", prompt ? prompt : "");`), 0o600); err != nil {
 		t.Fatalf("rewrite prompt fixture: %v", err)
 	}
-	if err := checkOptionalTools(root, contract.OptionalTools, make(map[string][]byte)); err == nil {
+	if err := checkOptionalTools(workingTreeFirmwareSource(root), contract.OptionalTools, make(map[string][]byte)); err == nil {
 		t.Fatal("checkOptionalTools accepted a changed CLI prompt")
 	}
 
@@ -350,7 +380,7 @@ func TestCheckOptionalToolsVerifiesCLIAndMediaFacts(t *testing.T) {
 	if err := os.WriteFile(portPath, []byte(`#define CLI_SOCKET_PORT 24`), 0o600); err != nil {
 		t.Fatalf("rewrite CLI port: %v", err)
 	}
-	if err := checkOptionalTools(root, contract.OptionalTools, make(map[string][]byte)); err == nil {
+	if err := checkOptionalTools(workingTreeFirmwareSource(root), contract.OptionalTools, make(map[string][]byte)); err == nil {
 		t.Fatal("checkOptionalTools accepted a changed CLI port")
 	}
 }
@@ -432,7 +462,7 @@ state_publisher_add_transport(void) {
 	}
 	writeFirmwareFixture(t, root, files)
 
-	if err := checkRemoteMQTT(root, contract.Remote, make(map[string][]byte)); err != nil {
+	if err := checkRemoteMQTT(workingTreeFirmwareSource(root), contract.Remote, make(map[string][]byte)); err != nil {
 		t.Fatalf("checkRemoteMQTT: %v", err)
 	}
 
@@ -441,7 +471,7 @@ state_publisher_add_transport(void) {
 	if err := os.WriteFile(httpPath, []byte(drifted), 0o600); err != nil {
 		t.Fatalf("rewrite remote HTTP fixture: %v", err)
 	}
-	if err := checkRemoteMQTT(root, contract.Remote, make(map[string][]byte)); err == nil {
+	if err := checkRemoteMQTT(workingTreeFirmwareSource(root), contract.Remote, make(map[string][]byte)); err == nil {
 		t.Fatal("checkRemoteMQTT accepted a changed firmware blocklist")
 	}
 
@@ -453,7 +483,7 @@ state_publisher_add_transport(void) {
 }
 `,
 	})
-	if err := checkRemoteMQTT(root, contract.Remote, make(map[string][]byte)); err == nil {
+	if err := checkRemoteMQTT(workingTreeFirmwareSource(root), contract.Remote, make(map[string][]byte)); err == nil {
 		t.Fatal("checkRemoteMQTT accepted an implicit snapshot added to state_publisher_add_transport")
 	}
 
@@ -465,7 +495,7 @@ state_publisher_add_transport(void) {
 	if err := os.WriteFile(streamPath, []byte(driftedStream), 0o600); err != nil {
 		t.Fatalf("rewrite remote stream QoS: %v", err)
 	}
-	if err := checkRemoteMQTT(root, contract.Remote, make(map[string][]byte)); err == nil {
+	if err := checkRemoteMQTT(workingTreeFirmwareSource(root), contract.Remote, make(map[string][]byte)); err == nil {
 		t.Fatal("checkRemoteMQTT accepted a changed stream publish QoS")
 	}
 }
@@ -480,5 +510,17 @@ func writeFirmwareFixture(t *testing.T, root string, files map[string]string) {
 		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 			t.Fatalf("write fixture %s: %v", name, err)
 		}
+	}
+}
+
+func workingTreeFirmwareSource(root string) firmwareSource {
+	return firmwareSource{root: root}
+}
+
+func runGit(t *testing.T, root string, args ...string) {
+	t.Helper()
+	command := exec.Command("git", append([]string{"-C", root}, args...)...)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
 	}
 }

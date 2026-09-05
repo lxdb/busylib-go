@@ -26,18 +26,17 @@ const (
 // handlers. It contains contract facts and source provenance, not copied
 // firmware implementation code.
 type Contract struct {
-	Repository     string                `json:"repository"`
-	Branch         string                `json:"branch"`
-	FirmwareCommit string                `json:"firmwareCommit"`
-	APIVersion     string                `json:"apiVersion"`
-	ProtobufCommit string                `json:"protobufCommit"`
-	License        string                `json:"license"`
-	StatusStream   StatusStreamContract  `json:"statusStream"`
-	Frames         FrameContract         `json:"frames"`
-	Snapshots      SnapshotContract      `json:"snapshots"`
-	OptionalTools  OptionalToolsContract `json:"optionalTools"`
-	Remote         RemoteContract        `json:"remote"`
-	Operations     []Operation           `json:"operations"`
+	Repository      string                `json:"repository"`
+	FirmwareRelease string                `json:"firmwareRelease"`
+	APIVersion      string                `json:"apiVersion"`
+	ProtobufCommit  string                `json:"protobufCommit"`
+	License         string                `json:"license"`
+	StatusStream    StatusStreamContract  `json:"statusStream"`
+	Frames          FrameContract         `json:"frames"`
+	Snapshots       SnapshotContract      `json:"snapshots"`
+	OptionalTools   OptionalToolsContract `json:"optionalTools"`
+	Remote          RemoteContract        `json:"remote"`
+	Operations      []Operation           `json:"operations"`
 }
 
 // StatusStreamContract records the audited WebSocket stream protocol.
@@ -230,7 +229,7 @@ func LoadContractFile(path string) (Contract, error) {
 
 // Validate checks the complete recorded contract against audited invariants.
 func (c Contract) Validate() error {
-	if c.Repository == "" || c.Branch == "" || c.FirmwareCommit == "" || c.ProtobufCommit == "" {
+	if c.Repository == "" || c.FirmwareRelease == "" || c.ProtobufCommit == "" {
 		return fmt.Errorf("firmware provenance is incomplete")
 	}
 	if c.APIVersion != ExpectedAPIVersion {

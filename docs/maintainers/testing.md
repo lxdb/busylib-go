@@ -22,7 +22,7 @@
 | `scripts/verify.sh metadata` | Checksums and tidy module metadata without changing the checkout | Module cache or network |
 | `scripts/verify.sh security` | Pinned vulnerability scan for all modules | Vulnerability data access |
 | `scripts/verify.sh generated` | Generated protobuf and focused protocol checks | `protoc` and protobuf source checkout |
-| `scripts/verify.sh firmware` | Pinned firmware contract checks | Firmware checkout |
+| `scripts/verify.sh firmware` | Recorded firmware release contract checks | Firmware checkout containing the recorded release tag |
 | `scripts/verify.sh integration` | Broker-backed Paho tests and device-tag compilation | Docker and pinned Mosquitto image |
 | `scripts/verify.sh fuzz` | Scheduled frame fuzz target | Go toolchain and configured time |
 | `scripts/verify.sh history` | Conventional Commit history after bootstrap | Git history |
@@ -39,6 +39,8 @@ The complete harness requires Go, Docker, `protoc` at the version declared in `s
 ```sh
 BUSYBAR_FIRMWARE_DIR=/path/to/busybar-firmware scripts/verify.sh all
 ```
+
+The firmware checkout can remain on a development branch. The contract checker reads the tree for the release named by `firmwareRelease` in `internal/api/testdata/firmware-contract.json`; fetch that tag before running the gate.
 
 Set `BUSYLIB_GO_PROTO_SRC` when the protobuf checkout is not at `../busybar-protobuf`. Set `BUSYLIB_FUZZ_TIME` only for a focused diagnostic run; release evidence uses the declared default.
 

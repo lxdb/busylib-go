@@ -19,8 +19,8 @@ func TestFirmwareContractReceipt(t *testing.T) {
 		t.Fatalf("load firmware contract: %v", err)
 	}
 
-	if contract.FirmwareCommit != "2cd7ec8abf8479ba3398241e99d291ec24f2a96f" {
-		t.Fatalf("firmware commit = %q", contract.FirmwareCommit)
+	if contract.FirmwareRelease != "1.2.3" {
+		t.Fatalf("firmware release = %q", contract.FirmwareRelease)
 	}
 	if contract.ProtobufCommit != "dba670e2ddb5cda511af997ca5fcb1254e90917f" {
 		t.Fatalf("protobuf commit = %q", contract.ProtobufCommit)

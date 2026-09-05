@@ -14,6 +14,8 @@ The repository contains three independently versioned Go modules:
 
 Generated protobuf packages are committed under `proto/`. Device tests are under `integration/device/` and require the `device` build tag.
 
+The root package groups HTTP service code by firmware capability. Keep each service, its request and response types, and its validation in the owning capability file, such as `display.go` or `storage.go`. Shared client and HTTP execution logic belongs in `client.go`, `request.go`, and `response.go`.
+
 ## Get fast feedback
 
 Run the standard device-free test and vet loop:
