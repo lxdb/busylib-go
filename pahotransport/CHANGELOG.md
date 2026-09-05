@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 (2026-09-05)
+
+### Dependencies
+
+- Require the root module v0.3.0 from the recreated repository.
+- Preserve the Paho transport API and behavior from v0.1.0.
+
 ## 0.1.0 (2026-08-31)
 
 
