@@ -1,0 +1,207 @@
+{
+  "repo_notes": [
+    {
+      "content": "Write for Go developers building applications with BUSY Bar first, and contributors second. Use the six top-level sections as distinct reading paths. Overview orients; Device Guides solves tasks; Status Streams explains live state; Connections explains integration choices; Architecture and Reference explains mechanics; Maintenance explains repository work. Each parent must provide useful orientation and links rather than repeat its children."
+    },
+    {
+      "content": "Ground every API name, example, default, format, limit, and behavior in the indexed revision's implementation and executable examples. Use docs/README.md and maintained docs/ as the reader-task map, then verify against source and tests. Prefer source on conflict and explain material discrepancies. Do not treat previous generated wikis, docs/research/, or ignored research material as current API authority. Do not invent methods, firmware capabilities, endpoints, or runtime verification."
+    },
+    {
+      "content": "Keep guides practical: prerequisites, the shortest working path, expected result, relevant failure handling, and links to deeper reference. Adapt repository example_test.go and example_services_test.go examples with correct signatures, bounded contexts, checked errors, and explicit resource ownership. Prefer WithLocalAccessToken over its deprecated alias. Use remote.NewClient for MQTT examples; do not invent a public cloud HTTP endpoint or pass a Paho transport as an http.Client."
+    },
+    {
+      "content": "Give each topic one primary home and cross-link related pages. Keep request internals out of Getting Started, put snapshot state aggregation beside streams rather than media conversion, and explain protobuf through its consumers before generation details. Define specialized terms where first used. Avoid a standalone glossary, exhaustive private-symbol tables, repeated source inventories, and decorative diagrams."
+    },
+    {
+      "content": "Use concise technical prose, shallow headings, and tables for capability comparisons and exact API mappings. Add source-linked diagrams only when they clarify component boundaries, request sequence, lifecycle, or state flow; label nodes with actual code concepts and explain the diagram in prose. Distinguish public contracts from private implementation details, especially buffer sizes and concurrency primitives."
+    },
+    {
+      "content": "Preserve boundaries that affect correct use: local versus MQTT availability; caller-owned HTTP/MQTT transports; one-shot stream lifecycle and shutdown; partial snapshot results; mutation versus observation; repeatable bodies versus retry eligibility; and runtime tools such as ffmpeg versus Go dependencies. Read numerical defaults and versions from their owners instead of treating numbers in this configuration as fixed requirements."
+    },
+    {
+      "content": "Describe repository configuration separately from live GitHub, broker, physical-device, and release evidence. Tests and workflows define checks, not proof they passed for the reader. Use current LICENSE, LICENSES/, THIRD_PARTY_NOTICES.md, module files, and release configuration for licensing and publication statements; dated research is historical context. Never infer that a firmware request's success proves the device operation completed."
+    }
+  ],
+  "pages": [
+    {
+      "title": "Overview",
+      "purpose": "Introduce the library, supported use cases, root and optional Paho modules, and public package responsibilities. Use README.md, docs/README.md, docs/reference/packages.md, and package doc.go files. Provide a task-to-page navigation table for new users, integrators, and maintainers, plus a compact component map. Explain what the library owns and what the application must supply.",
+      "parent": null
+    },
+    {
+      "title": "Getting Started",
+      "purpose": "Guide installation and the first successful local device request using docs/getting-started.md, README.md, example_test.go, client.go, and options.go. Cover device reachability, optional local authentication, client construction, a bounded context, error handling, and interpreting the result. End with links to common device tasks and alternative connections.",
+      "parent": "Overview",
+      "page_notes": [
+        {
+          "content": "Keep one complete local example as the main path. Verify model field names against source. Defer request preparation, version-cache internals, MQTT setup, and exhaustive options to their owning pages."
+        }
+      ]
+    },
+    {
+      "title": "Errors and Troubleshooting",
+      "purpose": "Help callers diagnose failures using docs/reference/errors.md, errors.go, package error definitions, and error contract tests. Map observable symptoms and errors.Is/errors.As checks to actions for authentication, deadlines, version mismatch, response or payload limits, slow consumers, partial snapshots, missing ffmpeg, and USB reachability. Distinguish validation, transport, HTTP API, decode, and device-reported stream errors.",
+      "parent": "Overview"
+    },
+    {
+      "title": "Device Guides",
+      "purpose": "Provide the complete typed-service discovery map from docs/reference/services.md and root service source files. Group every public service and operation by user task, link the six guides below, and explain shared validation and data-model conventions. Include Display, Input, Time, and all other current service handles rather than copying an outdated fixed list.",
+      "parent": null,
+      "page_notes": [
+        {
+          "content": "Use this page as the compact service reference. Task pages own examples and operational detail; Architecture and Reference owns HTTP mechanics. Explain omitted, zero, and pointer values where they affect updates."
+        }
+      ]
+    },
+    {
+      "title": "Inspect and Configure a Device",
+      "purpose": "Show how to read identity and system status, inspect settings, rename the device, configure brightness and volume, manage time, and use supported system controls. Start with docs/guides/inspect-and-configure.md and verify against system.go, settings.go, time.go, and example_services_test.go. Distinguish reads from operations that change or restart the device.",
+      "parent": "Device Guides"
+    },
+    {
+      "title": "Display Content, Play Audio, and Send Input",
+      "purpose": "Build an end-to-end display and media guide from docs/guides/display-and-media.md, display.go, display_elements.go, input.go, audio.go, and executable examples. Explain display targets, typed elements and JSON representation, drawing and clearing, input simulation, and audio playback. Link image/audio/animation preparation, assets, and captured-frame decoding at the point each is needed.",
+      "parent": "Device Guides"
+    },
+    {
+      "title": "Manage Assets and Storage",
+      "purpose": "Explain application assets and device filesystem operations using docs/guides/assets-and-storage.md, assets.go, storage.go, body.go, and validation tests. Cover identifiers and paths, upload and download choices, progress, streaming large files with ReadTo, replayable file bodies, and deletion. Show how prepared media becomes an uploaded asset and then displayed or played.",
+      "parent": "Device Guides"
+    },
+    {
+      "title": "Manage Busy Timers and Profiles",
+      "purpose": "Document active busy snapshots and saved profiles using docs/guides/busy-state.md, busy.go, and service examples. Explain supported timer states, profile slots, validation, optional values, and read-modify-write when replacing a snapshot or profile. Show how to preserve fields the application does not intend to change.",
+      "parent": "Device Guides",
+      "page_notes": [
+        {
+          "content": "Distinguish BusySnapshot, the firmware timer/settings model, from snapshot.Snapshot, the library aggregate of device state. Neither API should be described as a generic patch operation."
+        }
+      ]
+    },
+    {
+      "title": "Configure Connectivity and Pairing",
+      "purpose": "Cover Wi-Fi, BLE, accounts, smart-home pairing, and access-token operations from docs/guides/connectivity-and-pairing.md, wifi.go, ble.go, account.go, smart_home.go, and access_tokens_test.go. Explain prerequisites, credential handling, returned token ownership, progress observation, and supported local/remote restrictions. Link Connections for application transport setup.",
+      "parent": "Device Guides"
+    },
+    {
+      "title": "Update Firmware",
+      "purpose": "Explain update checks, status and changelog reads, package upload, installation, download cancellation, and automatic-update settings using docs/guides/firmware-updates.md and update.go. Distinguish request acceptance from completion, local-only operations from remote support, and aborting a download from rollback. Link stream updates for progress observation.",
+      "parent": "Device Guides"
+    },
+    {
+      "title": "Status Streams",
+      "purpose": "Explain how to consume local WebSocket and remote MQTT status through the shared stream.Stream interface. Use docs/guides/status-streams.md, status_stream.go, stream/, remote/stream.go, and executable lifecycle examples. Cover Start/Stop/Wait, message and status channels, typed updates, decode errors, device errors, lifecycle versus data freshness, reconnection, backpressure, and snapshot-request capability differences. Link state aggregation below and implementation flow in Architecture and Reference.",
+      "parent": null,
+      "page_notes": [
+        {
+          "content": "Show cancellation and shutdown ownership in the main example. Derive channel closure and slow-consumer behavior from source and tests; do not promise lossless delivery, restartability, or identical WebSocket/MQTT capabilities."
+        }
+      ]
+    },
+    {
+      "title": "Collect and Maintain Device Snapshots",
+      "purpose": "Explain snapshot.Collect, Field values, section selection, partial failures, Complete/Failures, and snapshot.Store using snapshot/collect.go, snapshot/types.go, snapshot/store.go, their tests, and docs/guides/status-streams.md. Show initial HTTP collection followed by applying typed stream updates. Explain presence versus zero, copy ownership, changed sections, and that Store does not own a stream or background worker.",
+      "parent": "Status Streams",
+      "page_notes": [
+        {
+          "content": "State what collection and update ordering actually guarantee. Do not present independent HTTP reads as an atomic device snapshot or invent reconciliation, freshness, or race-free handoff guarantees."
+        }
+      ]
+    },
+    {
+      "title": "Connections",
+      "purpose": "Help applications choose local HTTP plus WebSocket, MQTT remote access, or raw firmware CLI over the USB network interface. Use docs/reference/packages.md, docs/integrations/, client.go, remote/, and usb/. Compare prerequisites, capabilities, authentication, connection ownership, shutdown, and operation restrictions. Include a concise local HTTP configuration example and link the specialized integrations below.",
+      "parent": null
+    },
+    {
+      "title": "Remote MQTT and the Paho Adapter",
+      "purpose": "Provide the working MQTT integration path from docs/integrations/remote-mqtt.md, remote/client.go, remote/options.go, pahotransport/README.md, pahotransport/example_test.go, and pahotransport/transport.go. Cover the independently versioned adapter module, caller-supplied broker credentials and device identity, Dial, remote.NewClient, typed services, streams, reconnect behavior, subscription restoration, and ordered cleanup.",
+      "parent": "Connections",
+      "page_notes": [
+        {
+          "content": "Keep broker connection, remote client, and status-stream ownership explicit. Paho is optional. Explain adapter-specific slow-consumer behavior as implementation detail, and link custom transport requirements and wire mechanics instead of repeating them."
+        }
+      ]
+    },
+    {
+      "title": "Implement a Custom MQTT Transport",
+      "purpose": "Specify remote.Transport and Subscription contracts using docs/integrations/custom-mqtt-transport.md, remote/transport.go, remote/http.go, remote/stream.go, and adapter tests. Explain MQTT 5 response topics, correlation, expiry and QoS, HTTP request/response mapping, status subscriptions and lease renewal, concurrency, byte ownership, payload rejection before retention, cancellation, idempotent Close, and slow-consumer handling. Use Paho as one implementation, not the mandatory design.",
+      "parent": "Connections"
+    },
+    {
+      "title": "Use the USB Firmware CLI",
+      "purpose": "Document the network and firmware prerequisites, usb.NewClient, Open/Session ownership, SendCommand, StreamCommand, and typed Commands helpers using docs/integrations/usb-cli.md, usb/client.go, usb/session.go, usb/commands.go, usb/protocol.go, and examples. Explain framing, output cleanup, cancellation, limits, and bounded versus continuous commands. Distinguish raw CLI access from HTTP over the same USB network interface.",
+      "parent": "Connections"
+    },
+    {
+      "title": "Architecture and Reference",
+      "purpose": "Explain public package boundaries and the path from application calls to firmware, using docs/reference/packages.md, client.go, remote/, stream/, internal/statusstream/, internal/statusdecode/, and internal/streamstate/. Include the shared status decode and delivery flow, responsibilities for concurrency and channel ownership, and where snapshots and media helpers attach. Link focused references below. Keep internal types clearly identified as implementation details.",
+      "parent": null
+    },
+    {
+      "title": "HTTP Requests, Retries, and API Versions",
+      "purpose": "Document client construction and options, typed services, Prepare/DoPrepared, Request and Response, JSON/bytes/text modes, request IDs, authentication headers, and body constructors from docs/reference/client.md, client.go, options.go, request.go, response.go, body.go, and version.go. Trace ordinary retries separately from API-version discovery and compatibility retries, including cache sharing, cancellation, method eligibility, and body replayability.",
+      "parent": "Architecture and Reference",
+      "page_notes": [
+        {
+          "content": "Use a request sequence diagram only here. Explain that a repeatable body does not make a mutating operation eligible for automatic retry. Cite tests for concurrent version refresh and retry boundaries rather than generalizing from a single happy path."
+        }
+      ]
+    },
+    {
+      "title": "Compatibility and Resource Limits",
+      "purpose": "Consolidate toolchain and module requirements, firmware API compatibility, platform support, and resource limits from docs/reference/compatibility.md, module files, options.go, stream/options.go, remote/options.go, usb/options.go, frame/frame.go, converter source, and verification configuration. Provide source-linked tables with units, default values, configurability, failure behavior, and local/remote applicability. Distinguish audited firmware coverage from universal compatibility.",
+      "parent": "Architecture and Reference"
+    },
+    {
+      "title": "Prepare Images",
+      "purpose": "Explain convert.Image and ImageFile, accepted image formats, target sizing, resize/crop behavior, result metadata, input-byte and source-pixel limits, and conversion errors using convert/image.go, convert/doc.go, examples, and tests. Separate preparation from asset upload and drawing, with links back to those device tasks.",
+      "parent": "Architecture and Reference"
+    },
+    {
+      "title": "Prepare Audio",
+      "purpose": "Explain convert/audio.Convert and ConvertFile, device-ready PCM requirements, supported encoded inputs, ffmpeg invocation, cancellation, bounded output, result metadata, and ConversionError using convert/audio/ source and examples. Make the optional external executable and pass-through path explicit. Link uploading and playback rather than duplicating them.",
+      "parent": "Architecture and Reference"
+    },
+    {
+      "title": "Encode Animations",
+      "purpose": "Explain image-sequence, raw-frame, and ZIP inputs; ConvertZIP/ConvertZIPFile and EncodeImages/EncodeRGB888; timing, dimensions, coalescing and deduplication; and input/output limits using convert/animation/ source and tests. Describe the bicycle0 format, archive layout, and BGR byte order only to the level needed for correct generation or interoperability. Link asset upload and animation display.",
+      "parent": "Architecture and Reference"
+    },
+    {
+      "title": "Decode Display Frames and Protocol Messages",
+      "purpose": "Explain display targets and frame.FromHTTP/FromProto, native pixels, RGBA conversion, encoding validation, and size limits from display/ and frame/. Then map generated proto/ packages to their stream and frame consumers using stream/types.go and internal/statusdecode/decode.go. Separate decoding captured frames from preparing display assets, and link protobuf regeneration to Firmware Contracts and Generated Code.",
+      "parent": "Architecture and Reference",
+      "page_notes": [
+        {
+          "content": "Cover all generated package responsibilities compactly without reproducing every generated field or private decoder. Keep snapshot aggregation on its own page; a device-state snapshot is not a screen capture."
+        }
+      ]
+    },
+    {
+      "title": "Maintenance",
+      "purpose": "Orient contributors using CONTRIBUTING.md, docs/maintainers/development.md, docs/maintainers/testing.md, docs/maintainers/releasing.md, SECURITY.md, and SUPPORT.md. Explain the repository layout, root and Paho module workflow, where to change public APIs and documentation, and how to select verification. Link testing, contract generation, release procedures, and contribution/security support routes.",
+      "parent": null
+    },
+    {
+      "title": "Testing and Continuous Integration",
+      "purpose": "Explain the local verification commands and what each proves using scripts/verify.sh, scripts/test-coverage.sh, scripts/verify-tools.env, docs/maintainers/testing.md, internal/docscheck/, integration/, and .github/workflows/. Cover root/Paho isolation, executable documentation checks, minimum toolchains, unit/race/lint/security/fuzz/coverage checks, Mosquitto integration, and physical-device prerequisites. Map workflow jobs to evidence boundaries and failure diagnosis.",
+      "parent": "Maintenance"
+    },
+    {
+      "title": "Firmware Contracts and Generated Code",
+      "purpose": "Explain how audited firmware operations, streams, frames, snapshots, and MQTT behavior are represented and checked in internal/api/, firmware-contract.json, scripts/check-firmware-contract.sh, and contract tests. Cover protobuf inputs and provenance, pinned tools, package/digest mapping, generation, drift verification, and .github/workflows/contracts.yml using scripts/generate-protobuf.sh, scripts/check-protobuf.sh, and their env/TSV inputs. Link generated types to consumers and current license notices.",
+      "parent": "Maintenance",
+      "page_notes": [
+        {
+          "content": "Resolve the exact contract and input file locations from the repository. Explain updating a pin and reviewing generated changes as a maintainer workflow; do not imply contract checks prove physical-device behavior."
+        }
+      ]
+    },
+    {
+      "title": "Release the Modules",
+      "purpose": "Document the release procedure from docs/maintainers/releasing.md, release-please-config.json, .release-please-manifest.json, .github/workflows/release.yml, module metadata, and license notices. Cover Conventional Commits, release enablement and authentication prerequisites, root/Paho publication order, version/tag relationships, verification gates, immutable releases, and recovery. Distinguish configured automation from verified publication.",
+      "parent": "Maintenance"
+    }
+  ]
+}
