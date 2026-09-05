@@ -302,7 +302,10 @@ func (c *Client) executePreparedWith(ctx context.Context, execution *executionRe
 		response, err := c.sendOnce(ctx, execution)
 		if err != nil {
 			if contextErr := ctx.Err(); contextErr != nil {
-				return nil, requestError(execution, execution.requestID, transportAttempts, contextErr)
+				if !errors.Is(err, contextErr) {
+					err = errors.Join(contextErr, err)
+				}
+				return nil, requestError(execution, execution.requestID, transportAttempts, err)
 			}
 			if transportAttempts < maxAttempts {
 				if err := sleep(ctx, c.retryPolicy.Backoff); err != nil {

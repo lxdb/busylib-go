@@ -41,7 +41,7 @@ func documentationFiles(t *testing.T, root string) []string {
 	for _, path := range rootFiles {
 		add(path)
 	}
-	for _, relativeRoot := range []string{"docs", "integration/device", "pahotransport"} {
+	for _, relativeRoot := range []string{"docs", "integration/device", "pahotransport", "ble"} {
 		walkRoot := filepath.Join(root, relativeRoot)
 		err := filepath.WalkDir(walkRoot, func(path string, entry os.DirEntry, err error) error {
 			if err != nil {

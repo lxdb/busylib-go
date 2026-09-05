@@ -4,12 +4,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PAHO_DIR="${ROOT}/pahotransport"
+BLE_DIR="${ROOT}/ble"
 
 # shellcheck source=verify-tools.env
 source "${SCRIPT_DIR}/verify-tools.env"
 
 TMP_DIR="$(mktemp -d)"
 WORKSPACE="${TMP_DIR}/go.work"
+BLE_WORKSPACE="${TMP_DIR}/ble.go.work"
 MQTT_CONTAINER=""
 
 cleanup() {
@@ -25,26 +27,32 @@ usage() {
 usage: scripts/verify.sh <command>
 
 commands:
-  quick          Run current-toolchain tests and vet for both modules.
+  quick          Run current-toolchain tests and vet for all modules.
   docs           Check documentation structure, API coverage, links, and example compilation.
   minimum-root   Test the root module with its minimum Go toolchain and CGO off.
+  minimum-ble    Test the BLE module with its minimum Go toolchain and CGO off.
+  minimum-ble-darwin
+                 Test the CoreBluetooth backend with the BLE minimum Go toolchain.
   minimum-paho   Test the Paho module with its minimum Go toolchain and CGO off.
   current-root   Test the root module on the current supported Go toolchain.
-  race           Run root and Paho race tests.
-  vet            Run standalone vet for both modules.
+  current-ble    Test the BLE module on the current platform and toolchain.
+  race           Run race tests for all modules.
+  vet            Run standalone vet for all modules.
   coverage       Enforce the public-package coverage floor.
-  lint           Run the pinned linter for both modules.
+  lint           Run the pinned linter for all modules.
   repository     Validate shell scripts, Git diffs, and GitHub workflow syntax.
   metadata       Verify checksums and tidy module metadata without changing the tree.
-  security       Run the pinned vulnerability scanner for both modules.
+  security       Run the pinned vulnerability scanner for all modules.
   generated      Verify generated protobuf code and focused API tests.
   firmware       Verify the recorded firmware release tag.
   integration    Run broker-backed Paho tests and compile device-tagged tests.
   fuzz           Run the frame fuzz target for BUSYLIB_FUZZ_TIME or 5 minutes.
   history        Validate Conventional Commits after the release bootstrap commit.
   device         Run physical local and USB device tests; required variables must be set.
+  ble-device     Run opt-in physical BLE data-plane and bonded-reconnect tests.
   all            Run every device-free local gate.
-  release        Run all gates, including physical device tests.
+  release        Run all gates for root and Paho releases, including local and USB tests.
+  ble-release    Run all gates for a BLE release, including BLE qualification.
 EOF
 }
 
@@ -70,6 +78,17 @@ ensure_workspace() {
     go work edit -replace "github.com/lxdb/busylib-go=${ROOT}"
 }
 
+ensure_ble_workspace() {
+  if [[ -f "${BLE_WORKSPACE}" ]]; then
+    return
+  fi
+  require_command go
+  GOTOOLCHAIN="${BLE_MIN_GO_TOOLCHAIN}" GOWORK="${BLE_WORKSPACE}" \
+    go work init "${BLE_DIR}"
+  GOTOOLCHAIN="${BLE_MIN_GO_TOOLCHAIN}" GOWORK="${BLE_WORKSPACE}" \
+    go work edit -replace "github.com/lxdb/busylib-go=${ROOT}"
+}
+
 root_go() {
   local toolchain="$1"
   shift
@@ -84,6 +103,13 @@ paho_go() {
   (cd "${PAHO_DIR}" && GOTOOLCHAIN="${toolchain}" GOWORK="${WORKSPACE}" go "$@")
 }
 
+ble_go() {
+  local toolchain="$1"
+  shift
+  ensure_ble_workspace
+  (cd "${BLE_DIR}" && GOTOOLCHAIN="${toolchain}" GOWORK="${BLE_WORKSPACE}" go "$@")
+}
+
 run_quick() {
   phase "root tests and vet (${CURRENT_GO_TOOLCHAIN})"
   root_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly ./...
@@ -91,6 +117,9 @@ run_quick() {
   phase "Paho tests and vet (${CURRENT_GO_TOOLCHAIN})"
   paho_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly ./...
   paho_go "${CURRENT_GO_TOOLCHAIN}" vet -mod=readonly ./...
+  phase "BLE tests and vet (${CURRENT_GO_TOOLCHAIN})"
+  ble_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly ./...
+  ble_go "${CURRENT_GO_TOOLCHAIN}" vet -mod=readonly ./...
 }
 
 run_docs() {
@@ -100,11 +129,28 @@ run_docs() {
   root_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly -run '^Example' ./...
   phase "Paho examples (compile all; run examples with expected output)"
   paho_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly -run '^Example' ./...
+  phase "BLE examples (compile only; physical examples have no expected output)"
+  ble_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly -run '^Example' ./...
 }
 
 run_minimum_root() {
   phase "root minimum toolchain (${ROOT_MIN_GO_TOOLCHAIN}, CGO disabled)"
   CGO_ENABLED=0 root_go "${ROOT_MIN_GO_TOOLCHAIN}" test -mod=readonly ./...
+}
+
+run_minimum_ble() {
+  phase "BLE minimum toolchain (${BLE_MIN_GO_TOOLCHAIN}, CGO disabled)"
+  CGO_ENABLED=0 ble_go "${BLE_MIN_GO_TOOLCHAIN}" test -mod=readonly ./...
+}
+
+run_minimum_ble_darwin() {
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    echo "minimum-ble-darwin requires macOS" >&2
+    exit 2
+  fi
+  phase "CoreBluetooth minimum toolchain (${BLE_MIN_GO_TOOLCHAIN}, CGO enabled)"
+  CGO_ENABLED=1 ble_go "${BLE_MIN_GO_TOOLCHAIN}" test -mod=readonly ./...
+  CGO_ENABLED=1 ble_go "${BLE_MIN_GO_TOOLCHAIN}" vet -mod=readonly ./...
 }
 
 run_minimum_paho() {
@@ -117,11 +163,24 @@ run_current_root() {
   root_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly ./...
 }
 
+run_current_ble() {
+  phase "BLE current platform and toolchain (${CURRENT_GO_TOOLCHAIN})"
+  ble_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly ./...
+  ble_go "${CURRENT_GO_TOOLCHAIN}" vet -mod=readonly ./...
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    phase "BLE device-test compilation on macOS (${CURRENT_GO_TOOLCHAIN})"
+    CGO_ENABLED=1 ble_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly -run '^$' -tags=device ./...
+    CGO_ENABLED=1 ble_go "${CURRENT_GO_TOOLCHAIN}" vet -mod=readonly -tags=device ./...
+  fi
+}
+
 run_race() {
   phase "root race tests (${CURRENT_GO_TOOLCHAIN})"
   root_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly -race -count=1 ./...
   phase "Paho race tests (${CURRENT_GO_TOOLCHAIN})"
   paho_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly -race -count=1 ./...
+  phase "BLE race tests (${CURRENT_GO_TOOLCHAIN})"
+  ble_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly -race -count=1 ./...
 }
 
 run_vet() {
@@ -129,6 +188,8 @@ run_vet() {
   root_go "${CURRENT_GO_TOOLCHAIN}" vet -mod=readonly ./...
   phase "Paho vet (${CURRENT_GO_TOOLCHAIN})"
   paho_go "${CURRENT_GO_TOOLCHAIN}" vet -mod=readonly ./...
+  phase "BLE vet (${CURRENT_GO_TOOLCHAIN})"
+  ble_go "${CURRENT_GO_TOOLCHAIN}" vet -mod=readonly ./...
 }
 
 run_coverage() {
@@ -143,6 +204,9 @@ run_lint() {
     "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}" run
   phase "Paho lint (${GOLANGCI_LINT_VERSION}, ${LINT_GO_TOOLCHAIN})"
   paho_go "${LINT_GO_TOOLCHAIN}" run \
+    "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}" run
+  phase "BLE lint (${GOLANGCI_LINT_VERSION}, ${LINT_GO_TOOLCHAIN})"
+  ble_go "${LINT_GO_TOOLCHAIN}" run \
     "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}" run
 }
 
@@ -177,6 +241,23 @@ run_metadata() {
   grep -v '^github.com/lxdb/busylib-go ' "${PAHO_DIR}/go.sum" > "${TMP_DIR}/pahotransport.go.sum"
   grep -v '^github.com/lxdb/busylib-go ' "${copy_dir}/go.sum" > "${TMP_DIR}/pahotransport-copy.go.sum"
   diff -u "${TMP_DIR}/pahotransport.go.sum" "${TMP_DIR}/pahotransport-copy.go.sum"
+
+  phase "BLE module metadata"
+  copy_dir="${TMP_DIR}/ble-tidy"
+  cp -R "${BLE_DIR}" "${copy_dir}"
+  (
+    cd "${copy_dir}"
+    GOTOOLCHAIN="${CURRENT_GO_TOOLCHAIN}" GOWORK=off \
+      go mod edit -replace "github.com/lxdb/busylib-go=${ROOT}"
+    GOTOOLCHAIN="${CURRENT_GO_TOOLCHAIN}" GOWORK=off go mod tidy
+    GOTOOLCHAIN="${CURRENT_GO_TOOLCHAIN}" GOWORK=off go mod verify
+    GOTOOLCHAIN="${CURRENT_GO_TOOLCHAIN}" GOWORK=off \
+      go mod edit -dropreplace github.com/lxdb/busylib-go
+  )
+  diff -u "${BLE_DIR}/go.mod" "${copy_dir}/go.mod"
+  grep -v '^github.com/lxdb/busylib-go ' "${BLE_DIR}/go.sum" > "${TMP_DIR}/ble.go.sum"
+  grep -v '^github.com/lxdb/busylib-go ' "${copy_dir}/go.sum" > "${TMP_DIR}/ble-copy.go.sum"
+  diff -u "${TMP_DIR}/ble.go.sum" "${TMP_DIR}/ble-copy.go.sum"
 }
 
 run_security() {
@@ -185,6 +266,9 @@ run_security() {
     "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" ./...
   phase "Paho vulnerability scan (${GOVULNCHECK_VERSION}, ${CURRENT_GO_TOOLCHAIN})"
   paho_go "${CURRENT_GO_TOOLCHAIN}" run \
+    "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" ./...
+  phase "BLE vulnerability scan (${GOVULNCHECK_VERSION}, ${CURRENT_GO_TOOLCHAIN})"
+  ble_go "${CURRENT_GO_TOOLCHAIN}" run \
     "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" ./...
 }
 
@@ -247,7 +331,7 @@ run_integration() {
     paho_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly -race -count=1 ./...
   paho_go "${CURRENT_GO_TOOLCHAIN}" vet -mod=readonly ./...
 
-  phase "device-tag compilation and vet"
+  phase "root device-tag compilation and vet"
   root_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly -run '^$' -tags=device ./integration/device
   root_go "${CURRENT_GO_TOOLCHAIN}" vet -mod=readonly -tags=device ./integration/device
 }
@@ -302,13 +386,40 @@ run_device() {
     -run '^TestLocalDeviceSelectiveClear$' -v ./integration/device
 }
 
+require_ble_device_identifier() {
+  if [[ -z "${BUSYBAR_BLE_IDENTIFIER:-}" ]]; then
+    echo "BUSYBAR_BLE_IDENTIFIER is required for physical BLE verification" >&2
+    exit 2
+  fi
+}
+
+run_ble_device() {
+  require_ble_device_identifier
+  phase "physical BLE data-plane test"
+  ble_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly -count=1 -tags=device \
+    -run '^TestBLEDeviceDataPlane$' -v ./...
+  phase "physical BLE bonded-reconnect qualification (30 cycles)"
+  ble_go "${CURRENT_GO_TOOLCHAIN}" test -mod=readonly -count=30 -tags=device \
+    -run '^TestBLEDeviceBondedReconnect$' -v ./...
+}
+
+require_ble_release_inputs() {
+  require_ble_device_identifier
+  if [[ "${BUSYBAR_BLE_WRITE_TEST:-}" != "1" ]]; then
+    echo "BUSYBAR_BLE_WRITE_TEST=1 is required for BLE release qualification" >&2
+    exit 2
+  fi
+}
+
 run_all() {
   run_repository
   run_docs
   run_history
   run_minimum_root
+  run_minimum_ble
   run_minimum_paho
   run_current_root
+  run_current_ble
   run_race
   run_vet
   run_coverage
@@ -325,8 +436,11 @@ case "${1:-}" in
   quick) run_quick ;;
   docs) run_docs ;;
   minimum-root) run_minimum_root ;;
+  minimum-ble) run_minimum_ble ;;
+  minimum-ble-darwin) run_minimum_ble_darwin ;;
   minimum-paho) run_minimum_paho ;;
   current-root) run_current_root ;;
+  current-ble) run_current_ble ;;
   race) run_race ;;
   vet) run_vet ;;
   coverage) run_coverage ;;
@@ -340,10 +454,17 @@ case "${1:-}" in
   fuzz) run_fuzz ;;
   history) run_history ;;
   device) run_device ;;
+  ble-device) run_ble_device ;;
   all) run_all ;;
   release)
     run_all
     run_device
+    ;;
+  ble-release)
+    require_ble_release_inputs
+    run_all
+    run_minimum_ble_darwin
+    run_ble_device
     ;;
   -h|--help|help) usage ;;
   *)

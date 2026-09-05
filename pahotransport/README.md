@@ -66,4 +66,4 @@ The root [Remote MQTT guide](../docs/integrations/remote-mqtt.md) covers service
 
 ## Develop the module
 
-Use the temporary workspace procedure in [Development](../docs/maintainers/development.md#work-across-both-modules) to test the adapter against the current root checkout. Do not commit a `go.work` file or local replacement. Before release, test the declared public dependency as described in [Releasing](../docs/maintainers/releasing.md#verify-the-declared-module-dependency).
+Use the temporary workspace procedure in [Development](../docs/maintainers/development.md#work-across-all-modules) to test the adapter against the current root checkout. Do not commit a `go.work` file or local replacement. Before release, test the declared public dependency as described in [Releasing](../docs/maintainers/releasing.md#verify-the-declared-module-dependency).

@@ -27,6 +27,7 @@ jobs:
           cache-dependency-path: |
             go.sum
             pahotransport/go.sum
+            ble/go.sum
       - run: scripts/verify.sh security
 
   dependency-review:

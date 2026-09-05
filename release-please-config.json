@@ -11,11 +11,17 @@
       "component": "busylib-go",
       "include-component-in-tag": false,
       "exclude-paths": [
-        "pahotransport"
+        "pahotransport",
+        "ble"
       ]
     },
     "pahotransport": {
       "component": "pahotransport",
+      "include-component-in-tag": true,
+      "tag-separator": "/"
+    },
+    "ble": {
+      "component": "ble",
       "include-component-in-tag": true,
       "tag-separator": "/"
     }

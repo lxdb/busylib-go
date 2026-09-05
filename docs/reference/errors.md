@@ -13,6 +13,8 @@ Every operation returns an error that the caller must inspect. Match structured 
 | [`*busylib.VersionError`](https://pkg.go.dev/github.com/lxdb/busylib-go#VersionError) | API version discovery or compatibility retry failed. | Check firmware compatibility and the wrapped discovery error. |
 | [`busylib.ErrResponseTooLarge`](https://pkg.go.dev/github.com/lxdb/busylib-go#ErrResponseTooLarge) | A buffered HTTP response exceeded the client limit. | Use a streaming method when available or raise the limit only for a measured requirement. |
 
+`*busylib.RequestError` can wrap more than one cause. If a context ends while a transport reports a more specific failure, the same error can match both causes through `errors.Is`. Check each identity that affects recovery.
+
 `APIError.DeviceCode` contains the firmware `error_code` value when present. For older payloads, it uses `code` instead. The client represents either value as a string.
 
 ```go
@@ -52,6 +54,21 @@ case err != nil:
 | [`*remote.Error`](https://pkg.go.dev/github.com/lxdb/busylib-go/remote#Error) | MQTT publication, subscription, response, or lifecycle handling failed. | Inspect `Operation`, `Route`, `Attempt`, `Terminal`, and the wrapped transport error. |
 
 The remote client does not close its caller-owned MQTT transport. Join or report errors from closing remote clients before closing the transport.
+
+## BLE errors
+
+| Error | Meaning | Caller action |
+| --- | --- | --- |
+| [`ble.ErrUnsupported`](https://pkg.go.dev/github.com/lxdb/busylib-go/ble#ErrUnsupported) | The current platform or build does not provide a BLE backend. | Use macOS with CGO or choose another transport. |
+| [`ble.ErrClosed`](https://pkg.go.dev/github.com/lxdb/busylib-go/ble#ErrClosed) | The BLE client or its HTTP transport is closed. | Create another BLE client if more work is required. |
+| [`ble.ErrNotFound`](https://pkg.go.dev/github.com/lxdb/busylib-go/ble#ErrNotFound) | A scan found no BUSY Bar, or CoreBluetooth no longer knows the selected identifier. | Verify that BLE is enabled and the device is advertising; do not automatically delete pairing. |
+| [`ble.ErrDisconnected`](https://pkg.go.dev/github.com/lxdb/busylib-go/ble#ErrDisconnected) | No usable physical BLE link exists. | Let an active stream apply its bounded reconnect policy or reconnect explicitly. |
+| [`ble.ErrOutcomeUnknown`](https://pkg.go.dev/github.com/lxdb/busylib-go/ble#ErrOutcomeUnknown) | A request began writing but no complete response established its outcome. The current BLE HTTP session is no longer reusable. | Close the BLE client, connect again, and use the new client to read current device state before repeating a mutation. |
+| [`ble.ErrMessageTooLarge`](https://pkg.go.dev/github.com/lxdb/busylib-go/ble#ErrMessageTooLarge) | A buffered request, response, or FFE1 message exceeded its limit. | Keep the configured bound unless a measured operation requires more memory. |
+| [`ble.ErrProtocol`](https://pkg.go.dev/github.com/lxdb/busylib-go/ble#ErrProtocol) | An HTTP request, HTTP response, GATT map, or FFE1 message does not satisfy the BLE protocol contract. | Treat the data or device as incompatible and preserve the wrapped error for diagnostics. |
+| [`*ble.Error`](https://pkg.go.dev/github.com/lxdb/busylib-go/ble#Error) | A BLE setup, GATT, protocol, or native CoreBluetooth operation failed. | Inspect `Operation`, `NativeCode`, and the wrapped cause without logging device identifiers or payloads. |
+
+The BLE client owns its CoreBluetooth connection. Close it after stopping or waiting for its status stream.
 
 ## USB CLI errors
 

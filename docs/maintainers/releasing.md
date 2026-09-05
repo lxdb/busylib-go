@@ -8,18 +8,22 @@ This repository publishes source and Go module tags. It does not publish applica
 | --- | --- | --- |
 | `github.com/lxdb/busylib-go` | `vX.Y.Z` | Publish first |
 | `github.com/lxdb/busylib-go/pahotransport` | `pahotransport/vX.Y.Z` | Publish after its required root version is public |
+| `github.com/lxdb/busylib-go/ble` | `ble/vX.Y.Z` | Publish after its required root version is public and BLE qualification passes |
 
-The modules are independently versioned and do not need matching version numbers. `pahotransport/go.mod` defines the adapter's minimum root version.
+The modules are independently versioned and do not need matching version numbers. Each optional module's `go.mod` defines its minimum root version.
+
+Release Please tracks BLE as an independent component. Do not merge or publish its release pull request until the physical BLE gate passes and the module points to a published root version that satisfies its declared API requirements.
 
 ## Satisfy publication gates
 
 Do not enable publication until all applicable gates have evidence:
 
 - The protobuf source matches the recorded license, inventory, and schema digests.
-- Root and adapter tests, race tests, vet, lint, security, contracts, generation, and coverage pass.
+- Root and optional-module tests, race tests, vet, lint, security, contracts, generation, and coverage pass.
 - The selected Go releases use their latest security patches.
 - Local HTTP, local WebSocket, USB, and physical media checks pass on a BUSY Bar.
 - Broker-backed connection loss, reconnection, and subscription restoration pass.
+- BLE fresh pairing, HTTP, FFE1, cleanup, and at least 30 saved-bond reconnect cycles pass on the supported macOS and firmware combination.
 - Public API changes since the previous tag have a compatibility review.
 - Examples compile against the release candidate.
 - Required repository security controls are active, or an unavailable control is recorded as a blocker.
@@ -34,7 +38,7 @@ Run every device-free gate on the candidate commit:
 BUSYBAR_FIRMWARE_DIR=/path/to/busybar-firmware scripts/verify.sh all
 ```
 
-Then run the complete release command with both physical addresses:
+For a root or Paho candidate, run the complete release command with both physical addresses:
 
 ```sh
 BUSYBAR_BASE_URL=http://device-address \
@@ -45,17 +49,27 @@ BUSYBAR_FIRMWARE_DIR=/path/to/busybar-firmware \
 scripts/verify.sh release
 ```
 
+For a BLE candidate, run its separate gate on macOS. This command requires the write/read-back cleanup check and runs 30 saved-bond reconnect cycles:
+
+```sh
+BUSYBAR_BLE_IDENTIFIER='<corebluetooth-uuid>' \
+BUSYBAR_BLE_WRITE_TEST=1 \
+BUSYBAR_FIRMWARE_DIR=/path/to/busybar-firmware \
+scripts/verify.sh ble-release
+```
+
 Record the harness command, device model, firmware version, and result. Do not record credentials or device tokens. Use the release pull request workflow as supplemental Linux and macOS evidence.
 
 ## Verify the declared module dependency
 
-When `pahotransport/go.mod` changes its root requirement, wait until that root version is public and test without a workspace:
+When an optional module changes its root requirement, wait until that root version is public and test without a workspace:
 
 ```sh
 (cd pahotransport && GOWORK=off go test -mod=readonly ./...)
+(cd ble && GOWORK=off go test -mod=readonly ./...)
 ```
 
-This check proves that the adapter consumes its declared public dependency instead of the local checkout.
+This check proves that each optional module consumes its declared public dependency instead of the local checkout.
 
 ## Understand release automation
 
@@ -67,7 +81,7 @@ Release Please reads Conventional Commits on `main` and maintains a separate rel
 | `feat:` | Minor |
 | Type followed by `!`, or a `BREAKING CHANGE:` trailer | Major, or minor before `v1.0.0` |
 
-Other valid Conventional Commit types can appear in a changelog without forcing a release. Changes confined to `pahotransport/` release only the adapter because the root release configuration excludes that path. Release Please does not update dependencies between modules.
+Other valid Conventional Commit types can appear in a changelog without forcing a release. Changes confined to `pahotransport/` or `ble/` release only that module because the root release configuration excludes both paths. Release Please does not update dependencies between modules.
 
 The release workflow validates non-merge commits after the configured bootstrap boundary. This detects direct pushes or merge histories that bypass pull-request title validation.
 
@@ -91,11 +105,11 @@ The workflow uses a short-lived GitHub App installation token because events cre
 3. Review the root changelog, version manifest, dependency requirements, and required checks.
 4. Set `RELEASES_ENABLED` to `true` only for an authorized root release.
 5. Merge the root release pull request, verify the tag and public module, and set the variable back to false.
-6. Run the workspace-disabled adapter suite against the published root module.
-7. Review and publish the adapter release only after that check passes.
+6. Run the workspace-disabled suite for each affected optional module against the published root module.
+7. Review and publish an optional-module release only after its check passes.
 8. Confirm that publication created exactly the expected tag and GitHub Release, then set `RELEASES_ENABLED` back to false.
 
-The root module must be public before an adapter release that depends on it. Add `/pahotransport` as a second Dependabot `gomod` directory only after the required root version exists.
+The root module must be public before an optional-module release that depends on it. Keep each optional `gomod` Dependabot directory aligned with a public root requirement.
 
 Do not edit `.release-please-manifest.json` manually after bootstrap. If the standard action fails, correct the reported condition and rerun it. Do not add a second publisher or move an existing tag.
 
@@ -106,12 +120,14 @@ Replace the example versions with the versions just published:
 ```sh
 GOPROXY=https://proxy.golang.org go list -m github.com/lxdb/busylib-go@v0.1.0
 GOPROXY=https://proxy.golang.org go list -m github.com/lxdb/busylib-go/pahotransport@v0.1.0
+GOPROXY=https://proxy.golang.org go list -m github.com/lxdb/busylib-go/ble@v0.1.0
 
 consumer_dir="$(mktemp -d)"
 cd "$consumer_dir"
 go mod init example.com/busylib-release-check
 GOPROXY=https://proxy.golang.org go get github.com/lxdb/busylib-go@v0.1.0
 GOPROXY=https://proxy.golang.org go get github.com/lxdb/busylib-go/pahotransport@v0.1.0
+GOPROXY=https://proxy.golang.org go get github.com/lxdb/busylib-go/ble@v0.1.0
 go list -m all
 ```
 

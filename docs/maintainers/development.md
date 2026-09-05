@@ -4,12 +4,13 @@ Use this page for repository changes. Consumer documentation starts at [Getting 
 
 ## Repository layout
 
-The repository contains two independently versioned Go modules:
+The repository contains three independently versioned Go modules:
 
 | Module | Directory | Purpose |
 | --- | --- | --- |
 | `github.com/lxdb/busylib-go` | repository root | Local client, remote protocol, USB CLI, media helpers, and shared types |
 | `github.com/lxdb/busylib-go/pahotransport` | `pahotransport/` | Optional Eclipse Paho implementation of `remote.Transport` |
+| `github.com/lxdb/busylib-go/ble` | `ble/` | Optional macOS CoreBluetooth device and status-stream transport |
 
 Generated protobuf packages are committed under `proto/`. Device tests are under `integration/device/` and require the `device` build tag.
 
@@ -29,13 +30,13 @@ Run the documentation contracts when changing Markdown, examples, public service
 scripts/verify.sh docs
 ```
 
-The harness reads pinned versions from `scripts/verify-tools.env`. It creates any temporary Paho workspace outside the repository and does not add a local replacement to a committed module file.
+The harness reads pinned versions from `scripts/verify-tools.env`. It creates temporary optional-module workspaces outside the repository and does not add a local replacement to a committed module file.
 
-## Work across both modules
+## Work across all modules
 
-The adapter depends on a published root module in `pahotransport/go.mod`. During development, the verification harness creates a disposable workspace that replaces that dependency with the current root checkout.
+The optional modules depend on a published root module. During development, the verification harness creates disposable workspaces that replace those dependencies with the current root checkout.
 
-Do not commit a `go.work` file or a local `replace` directive. Before releasing an adapter change, run the workspace-disabled consumer check in [Releasing](releasing.md#verify-the-declared-module-dependency) against the root version declared in `pahotransport/go.mod`.
+Do not commit a `go.work` file or a local `replace` directive. Before releasing an optional-module change, run the workspace-disabled consumer check in [Releasing](releasing.md#verify-the-declared-module-dependency) against its declared root version.
 
 ## Change generated protobuf code
 

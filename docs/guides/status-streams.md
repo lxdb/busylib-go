@@ -1,6 +1,6 @@
 # Status streams
 
-Status streams deliver live device updates over a local WebSocket or remote MQTT connection. Both transports implement the same one-shot `stream.Stream` lifecycle.
+Status streams deliver live device updates over a local WebSocket, remote MQTT connection, or the optional BLE FFE1 characteristic. All transports implement the same one-shot `stream.Stream` lifecycle.
 
 ## Consume a local stream
 
@@ -45,7 +45,7 @@ Read the channel with the two-value receive form. A closed channel otherwise ret
 | `Status()` | Return the latest lifecycle snapshot. |
 | `Statuses()` | Deliver lifecycle snapshots. Intermediate values can coalesce. |
 | `Messages()` | Deliver decoded messages and ordered typed updates. |
-| `RequestSnapshot(ctx)` | Ask a local stream for an immediate snapshot. Remote MQTT returns `stream.ErrSnapshotUnsupported`. |
+| `RequestSnapshot(ctx)` | Ask a local stream for an immediate snapshot. Remote MQTT and BLE return `stream.ErrSnapshotUnsupported`. |
 
 A stream cannot restart after it finishes. Create a new stream for another connection lifetime. Repeated `Wait` calls return the same terminal or cleanup result.
 
@@ -103,14 +103,16 @@ return statusStream.Wait()
 
 `snapshot.Store` does not start, stop, or reconnect a stream. The caller owns stream lifecycle.
 
-## Local and remote differences
+## Transport differences
 
-| Behavior | Local WebSocket | Remote MQTT |
-| --- | --- | --- |
-| Create | `client.NewStatusStream()` | `remoteClient.NewStatusStream()` |
-| Immediate snapshot request | Supported | Returns `stream.ErrSnapshotUnsupported` |
-| Transport ownership | Stream owns its WebSocket | Caller owns the MQTT transport |
-| Reconnection | Uses stream reconnect options | Uses stream reconnect options and renews the firmware lease |
-| Message representation | Text and binary messages | Binary messages |
+BLE device-service calls use raw HTTP over NUS. BLE status messages use the separate FFE1 characteristic and do not pass through the HTTP transport.
 
-Read [Remote MQTT](../integrations/remote-mqtt.md) for connection and shutdown ownership.
+| Behavior | Local WebSocket | Remote MQTT | BLE FFE1 |
+| --- | --- | --- | --- |
+| Create | `client.NewStatusStream()` | `remoteClient.NewStatusStream()` | `bleClient.NewStatusStream()` |
+| Immediate snapshot request | Supported | Returns `stream.ErrSnapshotUnsupported` | Returns `stream.ErrSnapshotUnsupported` |
+| Transport ownership | Stream owns its WebSocket | Caller owns the MQTT transport | BLE client owns CoreBluetooth and both subscriptions |
+| Reconnection | Uses stream reconnect options | Uses stream reconnect options and renews the firmware lease | Uses stream reconnect options and restores NUS plus FFE1 |
+| Message representation | Text and binary messages | Binary messages | Binary messages |
+
+Read [Remote MQTT](../integrations/remote-mqtt.md) or [BLE transport](../../ble/README.md) for connection and shutdown ownership.

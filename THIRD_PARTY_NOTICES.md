@@ -17,4 +17,4 @@ The root module fetches its dependencies as Go modules and does not vendor them.
 
 Consult each dependency’s upstream distribution for its complete license text and `go.mod` or `go.sum` for the selected version.
 
-The separate `github.com/lxdb/busylib-go/pahotransport` module has its own third-party notices.
+The separate `github.com/lxdb/busylib-go/pahotransport` and `github.com/lxdb/busylib-go/ble` modules have their own third-party notices.

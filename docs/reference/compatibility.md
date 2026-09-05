@@ -8,6 +8,7 @@ Compatibility depends on the Go module, firmware API contract, selected platform
 | --- | --- |
 | Root Go version | [`go.mod`](../../go.mod) |
 | Paho adapter Go version and root dependency | [`pahotransport/go.mod`](../../pahotransport/go.mod) |
+| BLE module Go version, root dependency, and CoreBluetooth binding | [`ble/go.mod`](../../ble/go.mod) |
 | Verification toolchains and pinned tools | [`scripts/verify-tools.env`](../../scripts/verify-tools.env) |
 | Firmware API contract and audited release tag | [`internal/api/testdata/firmware-contract.json`](../../internal/api/testdata/firmware-contract.json) |
 | Protobuf repository and source revision | [`scripts/protobuf-source.env`](../../scripts/protobuf-source.env) |
@@ -19,9 +20,9 @@ Read these files for exact version values. Documentation describes the meaning o
 
 ## Go modules
 
-The repository contains two independently versioned modules. The root library and optional Paho adapter can require different minimum Go versions. Test both modules when a shared transport interface changes.
+The repository contains three independently versioned modules. The root library and optional Paho and BLE modules can require different minimum Go versions. Test each affected module when a shared client or stream contract changes.
 
-Use `GOWORK=off` when verifying the Paho module against the root version declared in its `go.mod`. A local workspace replacement can otherwise hide an invalid published dependency.
+Use `GOWORK=off` when verifying an optional module against the root version declared in its `go.mod`. A local workspace replacement can otherwise hide an invalid published dependency.
 
 ## Firmware API
 
@@ -47,6 +48,15 @@ The CI workflow defines the operating systems covered by device-free tests. Phys
 
 The USB package uses the device's USB network interface. A passing build does not prove host routing, permissions, prompt compatibility, or firmware behavior.
 
+The BLE module is experimental. Its support boundaries are:
+
+| Boundary | Contract |
+| --- | --- |
+| macOS with CGO | Provides the CoreBluetooth backend. A successful build does not prove Bluetooth permission or device behavior. |
+| Other operating systems or macOS without CGO | The package compiles; `Scan` and `Connect` return `ble.ErrUnsupported`. |
+| Fresh pairing with firmware 1.2.3 | The documented qualification covers NUS HTTP and FFE1 state delivery. |
+| Saved-bond reconnect on macOS with firmware 1.2.3 | This combination is outside the supported boundary because [busybar-firmware#1014](https://github.com/busy-app/busybar-firmware/issues/1014) prevents a usable GATT session. |
+
 ## Default safety limits
 
 | Boundary | Default | Configuration or owner |
@@ -58,6 +68,7 @@ The USB package uses the device's USB network interface. A passing build does no
 | Animation ZIP input | 32 MiB | `animation.DefaultMaxInputBytes` |
 | Animation output | 64 MiB | `animation.DefaultMaxOutputBytes` |
 | Remote MQTT payload | 1 MiB | `remote.DefaultMaxMessageBytes` |
+| BLE request, response, or assembled state message | 1 MiB | `ble.DefaultMaxMessageBytes`; override with `ble.WithMaxMessageBytes` |
 | Encoded or decoded frame payload | 16 KiB | `frame.MaxPayloadSize` |
 
 These limits bound memory or processing exposure. They are not performance targets. Raise a limit only for a measured input requirement, and keep the caller's context bounded.

@@ -1,6 +1,6 @@
 # busylib-go
 
-`busylib-go` is a Go client for BUSY Bar devices. It provides typed services for the device HTTP API, local and remote status streams, MQTT integration, media conversion, frame decoding, snapshots, and the USB firmware CLI.
+`busylib-go` provides typed services for BUSY Bar devices. Applications use the same service API through local HTTP, remote MQTT, or the optional macOS BLE transport. Supporting packages provide status streams, media conversion, frame decoding, snapshots, and access to the USB firmware CLI.
 
 ## Install
 
@@ -16,9 +16,17 @@ Install the optional Eclipse Paho MQTT adapter only when the application uses it
 go get github.com/lxdb/busylib-go/pahotransport@latest
 ```
 
+Install the experimental macOS BLE transport only when the application uses CoreBluetooth:
+
+```sh
+go get github.com/lxdb/busylib-go/ble@latest
+```
+
 ## Read device status
 
 `NewClient` connects to the BUSY Bar USB-network endpoint at `http://10.0.4.20` by default.
+
+Before running the program, connect the BUSY Bar over USB and open <http://10.0.4.20> to confirm that the device is reachable. If the device UI does not load, resolve the USB-network connection before troubleshooting the Go client.
 
 ```go
 package main
@@ -57,11 +65,13 @@ The request succeeds when the device is reachable and returns a compatible statu
 | --- | --- |
 | Connect a device and make the first request | [Getting started](docs/getting-started.md) |
 | Find a client service or method | [Service reference](docs/reference/services.md) |
+| Diagnose request, API, stream, MQTT, or BLE failures | [Error reference](docs/reference/errors.md) |
 | Inspect status or change device settings | [Inspect and configure](docs/guides/inspect-and-configure.md) |
 | Render content or play audio | [Display and media](docs/guides/display-and-media.md) |
 | Upload assets or manage device files | [Assets and storage](docs/guides/assets-and-storage.md) |
 | Receive live device updates | [Status streams](docs/guides/status-streams.md) |
 | Connect through MQTT | [Remote MQTT](docs/integrations/remote-mqtt.md) |
+| Connect through Bluetooth Low Energy | [BLE transport](ble/README.md) |
 | Implement an MQTT transport | [Custom MQTT transport](docs/integrations/custom-mqtt-transport.md) |
 | Use the firmware CLI | [USB CLI](docs/integrations/usb-cli.md) |
 | Find a supporting package | [Package reference](docs/reference/packages.md) |
